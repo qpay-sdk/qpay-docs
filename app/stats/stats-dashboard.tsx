@@ -70,9 +70,13 @@ const REGISTRY_PACKAGES: {
     url: 'https://pypi.org/project/qpay-py/',
     category: 'sdk',
     fetchFn: async () => {
-      const res = await fetch('https://pypi.org/pypi/qpay-py/json')
-      const d = await res.json().catch(() => ({}))
-      return { downloads: '—', version: d.info?.version ?? '—' }
+      const [metaRes, dlRes] = await Promise.all([
+        fetch('https://pypi.org/pypi/qpay-py/json'),
+        fetch('https://pypistats.org/api/packages/qpay-py/recent'),
+      ])
+      const meta = await metaRes.json().catch(() => ({}))
+      const dl = await dlRes.json().catch(() => ({}))
+      return { downloads: dl.data?.last_month ?? '—', version: meta.info?.version ?? '—' }
     },
   },
   {
@@ -139,14 +143,13 @@ const REGISTRY_PACKAGES: {
     category: 'sdk',
     fetchFn: async () => {
       const res = await fetch(
-        'https://api.nuget.org/v3/registration5-gz-semver2/qpay/index.json'
+        'https://azuresearch-usnc.nuget.org/query?q=packageid:QPay&take=1'
       )
       const d = await res.json().catch(() => ({}))
-      const items = d.items?.[0]?.items ?? []
-      const latest = items[items.length - 1]
+      const pkg = d.data?.[0]
       return {
-        downloads: '—',
-        version: latest?.catalogEntry?.version ?? '—',
+        downloads: pkg?.totalDownloads ?? '—',
+        version: pkg?.version ?? '—',
       }
     },
   },
@@ -185,9 +188,13 @@ const REGISTRY_PACKAGES: {
     url: 'https://pypi.org/project/django-qpay/',
     category: 'framework',
     fetchFn: async () => {
-      const res = await fetch('https://pypi.org/pypi/django-qpay/json')
-      const d = await res.json().catch(() => ({}))
-      return { downloads: '—', version: d.info?.version ?? '—' }
+      const [metaRes, dlRes] = await Promise.all([
+        fetch('https://pypi.org/pypi/django-qpay/json'),
+        fetch('https://pypistats.org/api/packages/django-qpay/recent'),
+      ])
+      const meta = await metaRes.json().catch(() => ({}))
+      const dl = await dlRes.json().catch(() => ({}))
+      return { downloads: dl.data?.last_month ?? '—', version: meta.info?.version ?? '—' }
     },
   },
   {
@@ -245,14 +252,13 @@ const REGISTRY_PACKAGES: {
     category: 'framework',
     fetchFn: async () => {
       const res = await fetch(
-        'https://api.nuget.org/v3/registration5-gz-semver2/qpay.aspnetcore/index.json'
+        'https://azuresearch-usnc.nuget.org/query?q=packageid:QPay.AspNetCore&take=1'
       )
       const d = await res.json().catch(() => ({}))
-      const items = d.items?.[0]?.items ?? []
-      const latest = items[items.length - 1]
+      const pkg = d.data?.[0]
       return {
-        downloads: '—',
-        version: latest?.catalogEntry?.version ?? '—',
+        downloads: pkg?.totalDownloads ?? '—',
+        version: pkg?.version ?? '—',
       }
     },
   },
@@ -280,9 +286,13 @@ const REGISTRY_PACKAGES: {
     url: 'https://pypi.org/project/fastapi-qpay/',
     category: 'framework',
     fetchFn: async () => {
-      const res = await fetch('https://pypi.org/pypi/fastapi-qpay/json')
-      const d = await res.json().catch(() => ({}))
-      return { downloads: '—', version: d.info?.version ?? '—' }
+      const [metaRes, dlRes] = await Promise.all([
+        fetch('https://pypi.org/pypi/fastapi-qpay/json'),
+        fetch('https://pypistats.org/api/packages/fastapi-qpay/recent'),
+      ])
+      const meta = await metaRes.json().catch(() => ({}))
+      const dl = await dlRes.json().catch(() => ({}))
+      return { downloads: dl.data?.last_month ?? '—', version: meta.info?.version ?? '—' }
     },
   },
 ]
@@ -359,7 +369,7 @@ function SummaryCards({ totals }: { totals: AllStats['totals'] }) {
     { label: 'Repositories', value: totals.repos, icon: '/' },
     { label: 'Total Stars', value: totals.stars, icon: '/' },
     { label: 'Total Forks', value: totals.forks, icon: '/' },
-    { label: 'Registry Downloads', value: totals.totalDownloads, icon: '/' },
+    { label: 'Total Downloads', value: totals.totalDownloads, icon: '/' },
   ]
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem', marginBottom: '2rem' }}>
@@ -614,7 +624,7 @@ export function StatsDashboard() {
       <RegistryTable packages={frameworkPkgs} title="Framework Packages" />
 
       <div style={{ fontSize: '0.75rem', opacity: 0.5, marginTop: '2rem', textAlign: 'center' }}>
-        Stats fetched in real-time from public APIs. Some registries (pkg.go.dev, Maven Central, SPM) do not expose public download counts.
+        Stats fetched in real-time from public APIs. PyPI shows monthly downloads. Some registries (pkg.go.dev, Maven Central, SPM) do not expose public download counts.
       </div>
     </div>
   )
