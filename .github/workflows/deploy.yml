@@ -27,10 +27,7 @@ jobs:
       - run: npm run build
         env:
           GITHUB_PAGES: true
-      - name: Build search index
-        run: |
-          npx pagefind --site out --output-path out/qpay-docs/pagefind
-          find out/qpay-docs/_next/static -name '*.js' -exec sed -i 's|/_pagefind/|/pagefind/|g' {} +
+      - run: npx pagefind --site out --output-path out/_pagefind
       - run: touch out/.nojekyll
       - uses: actions/upload-pages-artifact@v4
         with:
