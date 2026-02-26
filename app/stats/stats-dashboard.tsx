@@ -341,16 +341,16 @@ function timeAgo(date: string): string {
 const cardStyle: React.CSSProperties = {
   padding: '1.25rem',
   borderRadius: '0.75rem',
-  border: '1px solid var(--x-border-color, #e5e7eb)',
-  background: 'var(--x-bg-secondary, #f9fafb)',
+  border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
+  background: 'color-mix(in srgb, currentColor 5%, transparent)',
 }
 
 const statBoxStyle: React.CSSProperties = {
   textAlign: 'center' as const,
   padding: '1rem',
   borderRadius: '0.5rem',
-  border: '1px solid var(--x-border-color, #e5e7eb)',
-  background: 'var(--x-bg, #fff)',
+  border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
+  background: 'color-mix(in srgb, currentColor 5%, transparent)',
   minWidth: '120px',
 }
 
@@ -566,7 +566,7 @@ export function StatsDashboard() {
 
   if (stats.error) {
     return (
-      <div style={{ ...cardStyle, borderColor: '#ef4444', color: '#ef4444' }}>
+      <div style={{ ...cardStyle, borderColor: 'var(--nextra-error, #ef4444)', color: 'var(--nextra-error, #ef4444)' }}>
         Error: {stats.error}
       </div>
     )
