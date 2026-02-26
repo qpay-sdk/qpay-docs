@@ -1,9 +1,10 @@
 # Swift SDK
 
-A Swift SDK for the QPay V2 payment API. Supports iOS 15+ and macOS 12+. Built with Swift concurrency (async/await) and actor isolation for thread-safe token management.
+A Swift SDK for the QPay V2 API. Built with Swift concurrency (`async`/`await`) and actor isolation for thread-safe token management. Supports iOS 15+, macOS 12+, and server-side Swift.
 
-- **GitHub**: [github.com/qpay-sdk/qpay-swift](https://github.com/qpay-sdk/qpay-swift)
-- **Requirements**: Swift 5.9+, iOS 15.0+ / macOS 12.0+
+[![GitHub](https://img.shields.io/github/v/tag/qpay-sdk/qpay-swift?label=GitHub)](https://github.com/qpay-sdk/qpay-swift)
+
+**Requirements**: Swift 5.9+, iOS 15.0+ / macOS 12.0+
 
 ## Installation
 
@@ -30,8 +31,49 @@ Then add `"QPay"` to your target's dependencies:
 
 1. Open your project in Xcode
 2. Go to **File > Add Package Dependencies...**
-3. Enter the repository URL
+3. Enter the repository URL: `https://github.com/qpay-sdk/qpay-swift.git`
 4. Select the version rule and click **Add Package**
+
+## Configuration
+
+### Direct Initialization
+
+```swift
+import QPay
+
+let config = QPayConfig(
+    baseURL: "https://merchant.qpay.mn",
+    username: "YOUR_USERNAME",
+    password: "YOUR_PASSWORD",
+    invoiceCode: "YOUR_INVOICE_CODE",
+    callbackURL: "https://yoursite.com/qpay/callback"
+)
+```
+
+### From Environment Variables
+
+For server-side Swift applications:
+
+```swift
+let config = try QPayConfig.fromEnvironment()
+```
+
+| Variable | Description |
+|---|---|
+| `QPAY_BASE_URL` | QPay API base URL |
+| `QPAY_USERNAME` | QPay merchant username |
+| `QPAY_PASSWORD` | QPay merchant password |
+| `QPAY_INVOICE_CODE` | Default invoice code |
+| `QPAY_CALLBACK_URL` | Payment callback URL |
+
+### Custom URLSession
+
+```swift
+let sessionConfig = URLSessionConfiguration.default
+sessionConfig.timeoutIntervalForRequest = 60
+
+let client = QPayClient(config: config, session: URLSession(configuration: sessionConfig))
+```
 
 ## Quick Start
 
@@ -62,78 +104,61 @@ let invoice = try await client.createSimpleInvoice(
 print("Invoice ID: \(invoice.invoiceID)")
 print("QR Image: \(invoice.qrImage)")
 print("Short URL: \(invoice.qPayShortURL)")
+
+for url in invoice.urls {
+    print("  \(url.name): \(url.link)")
+}
 ```
 
-## Configuration
-
-### Direct Initialization
-
-```swift
-let config = QPayConfig(
-    baseURL: "https://merchant.qpay.mn",
-    username: "YOUR_USERNAME",
-    password: "YOUR_PASSWORD",
-    invoiceCode: "YOUR_INVOICE_CODE",
-    callbackURL: "https://yoursite.com/qpay/callback"
-)
-```
-
-### From Environment Variables
-
-For server-side Swift applications:
-
-```swift
-let config = try QPayConfig.fromEnvironment()
-```
-
-| Variable | Description |
-|---|---|
-| `QPAY_BASE_URL` | QPay API base URL |
-| `QPAY_USERNAME` | QPay merchant username |
-| `QPAY_PASSWORD` | QPay merchant password |
-| `QPAY_INVOICE_CODE` | Default invoice code |
-| `QPAY_CALLBACK_URL` | Payment callback URL |
-
-## Usage
-
-### Create Simple Invoice
+## Create Invoice
 
 ```swift
 let invoice = try await client.createSimpleInvoice(
     CreateSimpleInvoiceRequest(
         invoiceCode: "YOUR_INVOICE_CODE",
-        senderInvoiceNo: "ORDER-001",
+        senderInvoiceNo: "ORDER-002",
         invoiceReceiverCode: "terminal",
-        invoiceDescription: "Payment for Order #001",
-        amount: 50000,
+        invoiceDescription: "Coffee order",
+        amount: 15000,
         callbackURL: "https://yoursite.com/qpay/callback"
     )
 )
 ```
 
-### Check Payment
+Cancel an invoice:
+
+```swift
+try await client.cancelInvoice(invoiceID: "invoice-id-here")
+```
+
+## Check Payment
 
 ```swift
 let check = try await client.checkPayment(
     PaymentCheckRequest(
         objectType: "INVOICE",
-        objectID: "INVOICE_ID",
+        objectID: invoice.invoiceID,
         offset: Offset(pageNumber: 1, pageLimit: 10)
     )
 )
 
-for row in check.rows {
-    print("Payment \(row.paymentID): \(row.paymentStatus) - \(row.paymentAmount) MNT")
+if check.count > 0 {
+    print("Payment received! Paid: \(check.paidAmount ?? 0) MNT")
+    for row in check.rows {
+        print("  \(row.paymentID): \(row.paymentStatus) (\(row.paymentAmount) MNT)")
+    }
+} else {
+    print("No payment yet")
 }
 ```
 
-### List Payments
+## List Payments
 
 ```swift
 let list = try await client.listPayments(
     PaymentListRequest(
         objectType: "INVOICE",
-        objectID: "INVOICE_ID",
+        objectID: invoice.invoiceID,
         startDate: "2024-01-01",
         endDate: "2024-12-31",
         offset: Offset(pageNumber: 1, pageLimit: 20)
@@ -142,25 +167,51 @@ let list = try await client.listPayments(
 
 print("Total: \(list.count)")
 for item in list.rows {
-    print("\(item.paymentID) - \(item.paymentAmount) \(item.paymentCurrency)")
+    print("  \(item.paymentID) | \(item.paymentAmount) \(item.paymentCurrency) | \(item.paymentStatus)")
 }
 ```
 
-### Create Ebarimt
+Get details for a single payment:
 
 ```swift
-let ebarimt = try await client.createEbarimt(
-    CreateEbarimtRequest(
-        paymentID: "PAYMENT_ID",
-        ebarimtReceiverType: "individual",
-        ebarimtReceiver: "AA12345678",
-        districtCode: "34"
-    )
-)
+let detail = try await client.getPayment(paymentID: "payment-id-here")
+print("Payment \(detail.paymentID): \(detail.paymentStatus)")
+```
 
-print("Ebarimt ID: \(ebarimt.id)")
-print("Lottery: \(ebarimt.ebarimtLottery)")
-print("QR Data: \(ebarimt.ebarimtQRData)")
+## Webhook Handling
+
+QPay sends a POST request to your `callbackURL` when a payment completes. In server-side Swift (e.g., Vapor):
+
+```swift
+import Vapor
+import QPay
+
+func routes(_ app: Application) throws {
+    let config = try QPayConfig.fromEnvironment()
+    let qpayClient = QPayClient(config: config)
+
+    app.post("api", "qpay", "callback") { req async throws -> HTTPStatus in
+        struct CallbackBody: Content {
+            let payment_id: String
+        }
+
+        let body = try req.content.decode(CallbackBody.self)
+
+        let result = try await qpayClient.checkPayment(
+            PaymentCheckRequest(
+                objectType: "INVOICE",
+                objectID: body.payment_id
+            )
+        )
+
+        if result.count > 0 {
+            // Payment verified -- update your order status
+            req.logger.info("Payment confirmed: \(body.payment_id)")
+        }
+
+        return .ok
+    }
+}
 ```
 
 ## Error Handling
@@ -178,7 +229,9 @@ do {
     case .apiError(let statusCode, let code, let message, let rawBody):
         print("API error \(statusCode): \(code) - \(message)")
 
-        if code == QPayErrorCode.invoicePaid {
+        if code == QPayErrorCode.invoiceNotFound {
+            print("Invoice does not exist")
+        } else if code == QPayErrorCode.invoicePaid {
             print("This invoice has already been paid")
         } else if code == QPayErrorCode.authenticationFailed {
             print("Invalid credentials")
@@ -198,6 +251,17 @@ do {
     }
 }
 ```
+
+### QPayError Variants
+
+| Variant | Description |
+|---|---|
+| `.configMissing(variable)` | Required configuration variable is missing |
+| `.apiError(statusCode, code, message, rawBody)` | QPay API returned an error |
+| `.requestFailed(reason)` | Network or HTTP request failure |
+| `.decodingFailed(reason)` | JSON response could not be decoded |
+| `.encodingFailed(reason)` | Request body could not be encoded |
+| `.unexpected(reason)` | An unexpected error occurred |
 
 ## SwiftUI Example
 
@@ -226,6 +290,11 @@ struct PaymentView: View {
                     .frame(width: 250, height: 250)
             }
 
+            if let errorMessage {
+                Text(errorMessage)
+                    .foregroundColor(.red)
+            }
+
             Button("Pay 50,000 MNT") {
                 Task { await createInvoice() }
             }
@@ -236,6 +305,8 @@ struct PaymentView: View {
 
     func createInvoice() async {
         isLoading = true
+        defer { isLoading = false }
+
         do {
             let invoice = try await client.createSimpleInvoice(
                 CreateSimpleInvoiceRequest(
@@ -256,25 +327,30 @@ struct PaymentView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
-        isLoading = false
     }
 }
 ```
 
 ## API Reference
 
-| Method | Description |
-|---|---|
-| `getToken()` | Authenticate and get a new token pair |
-| `refreshTokenCall()` | Refresh the current access token |
-| `createInvoice(_:)` | Create a full invoice with all options |
-| `createSimpleInvoice(_:)` | Create a simple invoice with minimal fields |
-| `createEbarimtInvoice(_:)` | Create an invoice with ebarimt (tax) data |
-| `cancelInvoice(invoiceID:)` | Cancel an invoice |
-| `getPayment(paymentID:)` | Get payment details |
-| `checkPayment(_:)` | Check payment status for an invoice |
-| `listPayments(_:)` | List payments with date range filtering |
-| `cancelPayment(paymentID:request:)` | Cancel a card payment |
-| `refundPayment(paymentID:request:)` | Refund a card payment |
-| `createEbarimt(_:)` | Create a tax receipt for a payment |
-| `cancelEbarimt(paymentID:)` | Cancel a tax receipt |
+| Method | Description | Returns |
+|---|---|---|
+| `getToken()` | Authenticate and get a new token pair | `TokenResponse` |
+| `refreshTokenCall()` | Refresh the current access token | `TokenResponse` |
+| `createInvoice(_:)` | Create a full invoice with all options | `InvoiceResponse` |
+| `createSimpleInvoice(_:)` | Create a simple invoice | `InvoiceResponse` |
+| `createEbarimtInvoice(_:)` | Create an invoice with ebarimt (tax) data | `InvoiceResponse` |
+| `cancelInvoice(invoiceID:)` | Cancel an invoice | `Void` |
+| `getPayment(paymentID:)` | Get payment details | `PaymentDetail` |
+| `checkPayment(_:)` | Check payment status | `PaymentCheckResponse` |
+| `listPayments(_:)` | List payments with date range | `PaymentListResponse` |
+| `cancelPayment(paymentID:request:)` | Cancel a card payment | `Void` |
+| `refundPayment(paymentID:request:)` | Refund a card payment | `Void` |
+| `createEbarimt(_:)` | Create a tax receipt | `EbarimtResponse` |
+| `cancelEbarimt(paymentID:)` | Cancel a tax receipt | `EbarimtResponse` |
+
+All methods are `async throws`.
+
+## Links
+
+- **GitHub**: [github.com/qpay-sdk/qpay-swift](https://github.com/qpay-sdk/qpay-swift)

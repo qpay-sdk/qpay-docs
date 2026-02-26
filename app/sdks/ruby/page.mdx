@@ -1,10 +1,11 @@
 # Ruby SDK
 
-Ruby SDK for the QPay V2 payment gateway API. Provides a simple, idiomatic Ruby interface with automatic token management, typed request/response structs, and comprehensive error handling.
+Ruby client library for the QPay V2 API. Idiomatic Ruby interface with Struct-based request/response objects, automatic token management with mutex synchronization, and Faraday HTTP under the hood.
 
-- **RubyGems**: [qpay-sdk](https://rubygems.org/gems/qpay-sdk)
-- **GitHub**: [github.com/qpay-sdk/qpay-ruby](https://github.com/qpay-sdk/qpay-ruby)
-- **Requirements**: Ruby 3.0+, Faraday ~> 2.0
+[![Gem Version](https://img.shields.io/gem/v/qpay-sdk)](https://rubygems.org/gems/qpay-sdk)
+[![GitHub](https://img.shields.io/github/v/tag/qpay-sdk/qpay-ruby?label=GitHub)](https://github.com/qpay-sdk/qpay-ruby)
+
+**Requirements**: Ruby 3.0+, Faraday ~> 2.0
 
 ## Installation
 
@@ -23,42 +24,7 @@ bundle install
 Or install directly:
 
 ```bash
-gem install qpay
-```
-
-## Quick Start
-
-```ruby
-require "qpay"
-
-# Configure from environment variables
-config = QPay::Config.from_env
-
-# Or configure manually
-config = QPay::Config.new(
-  base_url: "https://merchant.qpay.mn",
-  username: "YOUR_USERNAME",
-  password: "YOUR_PASSWORD",
-  invoice_code: "YOUR_INVOICE_CODE",
-  callback_url: "https://yoursite.com/payments/callback"
-)
-
-client = QPay::Client.new(config: config)
-
-invoice = client.create_simple_invoice(
-  QPay::CreateSimpleInvoiceRequest.new(
-    invoice_code: config.invoice_code,
-    sender_invoice_no: "ORDER-001",
-    invoice_receiver_code: "terminal",
-    invoice_description: "Payment for Order #001",
-    amount: 10_000,
-    callback_url: config.callback_url
-  )
-)
-
-puts invoice.invoice_id
-puts invoice.qpay_short_url
-puts invoice.qr_text
+gem install qpay-sdk
 ```
 
 ## Configuration
@@ -89,9 +55,46 @@ config = QPay::Config.new(
 )
 ```
 
-## Usage
+### Custom Faraday Connection
 
-### Create Simple Invoice
+```ruby
+faraday = Faraday.new do |f|
+  f.options.timeout = 60
+  f.adapter Faraday.default_adapter
+end
+
+client = QPay::Client.new(config: config, faraday: faraday)
+```
+
+## Quick Start
+
+```ruby
+require "qpay"
+
+config = QPay::Config.from_env
+client = QPay::Client.new(config: config)
+
+invoice = client.create_simple_invoice(
+  QPay::CreateSimpleInvoiceRequest.new(
+    invoice_code: config.invoice_code,
+    sender_invoice_no: "ORDER-001",
+    invoice_receiver_code: "terminal",
+    invoice_description: "Payment for Order #001",
+    amount: 10_000,
+    callback_url: config.callback_url
+  )
+)
+
+puts "Invoice ID: #{invoice.invoice_id}"
+puts "QR Image: #{invoice.qr_image}"
+puts "Short URL: #{invoice.qpay_short_url}"
+
+invoice.urls.each do |url|
+  puts "  #{url['name']}: #{url['link']}"
+end
+```
+
+## Create Invoice
 
 ```ruby
 invoice = client.create_simple_invoice(
@@ -100,14 +103,20 @@ invoice = client.create_simple_invoice(
     sender_invoice_no: "ORDER-002",
     invoice_receiver_code: "terminal",
     invoice_description: "Quick payment",
-    sender_branch_code: "BRANCH01",
+    sender_branch_code: "BRANCH01",  # optional
     amount: 5_000,
     callback_url: "https://yoursite.com/callback"
   )
 )
 ```
 
-### Check Payment
+Cancel an invoice:
+
+```ruby
+client.cancel_invoice("invoice-id-here")
+```
+
+## Check Payment
 
 ```ruby
 result = client.check_payment(
@@ -118,15 +127,17 @@ result = client.check_payment(
   )
 )
 
-puts result.count
-puts result.paid_amount
-
-result.rows.each do |row|
-  puts "#{row.payment_id}: #{row.payment_status} - #{row.payment_amount}"
+if result.count > 0
+  puts "Payment received! Paid: #{result.paid_amount}"
+  result.rows.each do |row|
+    puts "  #{row.payment_id}: #{row.payment_status} (#{row.payment_amount} #{row.payment_currency})"
+  end
+else
+  puts "No payment yet"
 end
 ```
 
-### List Payments
+## List Payments
 
 ```ruby
 payments = client.list_payments(
@@ -139,28 +150,78 @@ payments = client.list_payments(
   )
 )
 
-puts payments.count
-
+puts "Total: #{payments.count}"
 payments.rows.each do |item|
-  puts "#{item.payment_id}: #{item.payment_amount} #{item.payment_currency} (#{item.payment_status})"
+  puts "  #{item.payment_id}: #{item.payment_amount} #{item.payment_currency} (#{item.payment_status})"
 end
 ```
 
-### Create Ebarimt
+Get details for a single payment:
 
 ```ruby
-ebarimt = client.create_ebarimt(
-  QPay::CreateEbarimtRequest.new(
-    payment_id: "PAYMENT_ID",
-    ebarimt_receiver_type: "CITIZEN",
-    ebarimt_receiver: "AA12345678",
-    district_code: "001"
-  )
-)
+detail = client.get_payment("payment-id-here")
+puts "Payment #{detail.payment_id}: #{detail.payment_status}"
+```
 
-puts ebarimt.id
-puts ebarimt.ebarimt_qr_data
-puts ebarimt.ebarimt_lottery
+## Webhook Handling
+
+QPay sends a POST request to your `callback_url` when a payment completes.
+
+### Rails
+
+```ruby
+class QpayCallbacksController < ApplicationController
+  skip_before_action :verify_authenticity_token
+
+  def create
+    payment_id = params[:payment_id]
+
+    config = QPay::Config.from_env
+    client = QPay::Client.new(config: config)
+
+    result = client.check_payment(
+      QPay::PaymentCheckRequest.new(
+        object_type: "INVOICE",
+        obj_id: payment_id,
+      )
+    )
+
+    if result.count > 0
+      # Payment verified -- update your order status
+      Rails.logger.info("Payment confirmed: #{payment_id} (#{result.paid_amount} MNT)")
+    end
+
+    render json: { status: "ok" }
+  end
+end
+```
+
+### Sinatra
+
+```ruby
+require "sinatra"
+require "qpay"
+
+post "/api/qpay/callback" do
+  body = JSON.parse(request.body.read)
+  payment_id = body["payment_id"]
+
+  config = QPay::Config.from_env
+  client = QPay::Client.new(config: config)
+
+  result = client.check_payment(
+    QPay::PaymentCheckRequest.new(
+      object_type: "INVOICE",
+      obj_id: payment_id,
+    )
+  )
+
+  if result.count > 0
+    # Payment verified
+  end
+
+  { status: "ok" }.to_json
+end
 ```
 
 ## Error Handling
@@ -218,3 +279,8 @@ end
 | `refund_payment` | `payment_id`, `request:` (optional) | `nil` | Refund a payment |
 | `create_ebarimt` | `CreateEbarimtRequest` | `EbarimtResponse` | Create tax receipt |
 | `cancel_ebarimt` | `payment_id` (String) | `EbarimtResponse` | Cancel tax receipt |
+
+## Links
+
+- **RubyGems**: [rubygems.org/gems/qpay-sdk](https://rubygems.org/gems/qpay-sdk)
+- **GitHub**: [github.com/qpay-sdk/qpay-ruby](https://github.com/qpay-sdk/qpay-ruby)

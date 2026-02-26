@@ -1,49 +1,74 @@
 # SDKs
 
-QPay provides official SDKs for 11 languages. Each SDK is a standalone package with identical functionality, covering all QPay V2 API endpoints.
+QPay provides official SDKs for 11 languages, plus a cURL reference collection. Each SDK is a standalone package with identical functionality, covering all QPay V2 API endpoints.
 
 ## Common Features
 
 Every SDK includes:
 
-- **Automatic token management** -- Authentication tokens are obtained, cached, and refreshed transparently.
-- **Type-safe models** -- Strongly typed request and response objects.
-- **Error handling** -- Structured error types with QPay error codes.
-- **Full API coverage** -- Invoices, payments, and ebarimt operations.
-- **Environment variable support** -- Load configuration from `QPAY_*` environment variables.
+- **Automatic token management** -- Access tokens are obtained, cached, and refreshed transparently. You never need to call auth endpoints manually.
+- **Type-safe models** -- Strongly typed request and response objects in every language.
+- **Structured error handling** -- Dedicated error types with HTTP status codes, QPay error codes, messages, and raw response bodies.
+- **Full API coverage** -- Invoices (create, simple, ebarimt, cancel), payments (get, check, list, cancel, refund), and ebarimt operations (create, cancel).
+- **Environment variable support** -- Load configuration from `QPAY_*` environment variables with a single function call.
+- **Custom HTTP client support** -- Bring your own HTTP client for timeouts, proxies, or testing.
 
 ## Available SDKs
 
-| Language | Package | Install Command |
+| Language | Package | Registry | Install Command |
+|---|---|---|---|
+| [Go](/sdks/go) | `qpay-go` | [pkg.go.dev](https://pkg.go.dev/github.com/qpay-sdk/qpay-go) | `go get github.com/qpay-sdk/qpay-go` |
+| [JavaScript / TypeScript](/sdks/javascript) | `qpay-js` | [npm](https://www.npmjs.com/package/qpay-js) | `npm install qpay-js` |
+| [Python](/sdks/python) | `qpay-py` | [PyPI](https://pypi.org/project/qpay-py/) | `pip install qpay-py` |
+| [PHP](/sdks/php) | `usukhbayar/qpay-php` | [Packagist](https://packagist.org/packages/usukhbayar/qpay-php) | `composer require usukhbayar/qpay-php` |
+| [Java](/sdks/java) | `qpay-java` | [Maven Central](https://central.sonatype.com/artifact/io.github.qpay-sdk/qpay-java) | Maven / Gradle |
+| [Ruby](/sdks/ruby) | `qpay-sdk` | [RubyGems](https://rubygems.org/gems/qpay-sdk) | `gem install qpay-sdk` |
+| [.NET (C#)](/sdks/dotnet) | `QPay` | [NuGet](https://www.nuget.org/packages/QPay) | `dotnet add package QPay` |
+| [Dart / Flutter](/sdks/dart) | `qpay` | [pub.dev](https://pub.dev/packages/qpay) | `dart pub add qpay` |
+| [Swift](/sdks/swift) | `QPay` | [SPM](https://github.com/qpay-sdk/qpay-swift) | Swift Package Manager |
+| [Rust](/sdks/rust) | `qpay` | [crates.io](https://crates.io/crates/qpay) | `cargo add qpay` |
+| [cURL](/sdks/curl) | `qpay-curl` | [GitHub](https://github.com/qpay-sdk/qpay-curl) | Shell scripts (no install) |
+
+## Environment Variables
+
+All SDKs read the same set of environment variables:
+
+| Variable | Required | Description |
 |---|---|---|
-| [Go](/sdks/go) | `qpay-go` | `go get github.com/qpay-sdk/qpay-go` |
-| [JavaScript / TypeScript](/sdks/javascript) | `qpay-js` | `npm install qpay-js` |
-| [Python](/sdks/python) | `qpay-py` | `pip install qpay-py` |
-| [PHP](/sdks/php) | `qpay-php` | `composer require usukhbayar/qpay-php` |
-| [Java](/sdks/java) | `qpay-java` | Maven / Gradle |
-| [Ruby](/sdks/ruby) | `qpay-sdk` | `gem install qpay-sdk` |
-| [.NET (C#)](/sdks/dotnet) | `QPay` | `dotnet add package QPay` |
-| [Dart / Flutter](/sdks/dart) | `qpay` | `dart pub add qpay` |
-| [Swift](/sdks/swift) | `QPay` | Swift Package Manager |
-| [Rust](/sdks/rust) | `qpay` | `cargo add qpay` |
-| [cURL](/sdks/curl) | Shell scripts | No install needed |
+| `QPAY_BASE_URL` | Yes | QPay API base URL (e.g., `https://merchant.qpay.mn`) |
+| `QPAY_USERNAME` | Yes | QPay merchant username |
+| `QPAY_PASSWORD` | Yes | QPay merchant password |
+| `QPAY_INVOICE_CODE` | Yes | Default invoice code for your merchant |
+| `QPAY_CALLBACK_URL` | Yes | URL that QPay calls after a payment is completed |
 
 ## API Coverage
 
-All SDKs implement the following operations:
+All SDKs implement every operation in the QPay V2 API:
 
-| Operation | Description |
-|---|---|
-| Get Token | Authenticate with QPay |
-| Refresh Token | Refresh an expired access token |
-| Create Invoice | Create a detailed invoice with all options |
-| Create Simple Invoice | Create an invoice with minimal fields |
-| Create Ebarimt Invoice | Create an invoice with tax information |
-| Cancel Invoice | Cancel an existing invoice |
-| Get Payment | Retrieve payment details |
-| Check Payment | Check if a payment has been made |
-| List Payments | List payments with filters and pagination |
-| Cancel Payment | Cancel a card payment |
-| Refund Payment | Refund a card payment |
-| Create Ebarimt | Create an electronic tax receipt |
-| Cancel Ebarimt | Cancel an electronic tax receipt |
+| Operation | Method | Endpoint | Description |
+|---|---|---|---|
+| Get Token | POST | `/v2/auth/token` | Authenticate with Basic Auth and get access/refresh tokens |
+| Refresh Token | POST | `/v2/auth/refresh` | Refresh an expired access token using the refresh token |
+| Create Invoice | POST | `/v2/invoice` | Create a detailed invoice with all available options |
+| Create Simple Invoice | POST | `/v2/invoice` | Create an invoice with minimal required fields |
+| Create Ebarimt Invoice | POST | `/v2/invoice` | Create an invoice with tax (ebarimt) information |
+| Cancel Invoice | DELETE | `/v2/invoice/{id}` | Cancel an existing unpaid invoice |
+| Get Payment | GET | `/v2/payment/{id}` | Retrieve full payment details by payment ID |
+| Check Payment | POST | `/v2/payment/check` | Check if a payment has been made for an invoice |
+| List Payments | POST | `/v2/payment/list` | List payments with date range and pagination |
+| Cancel Payment | DELETE | `/v2/payment/cancel/{id}` | Cancel a card payment |
+| Refund Payment | DELETE | `/v2/payment/refund/{id}` | Refund a card payment |
+| Create Ebarimt | POST | `/v2/ebarimt_v3/create` | Create an electronic tax receipt for a payment |
+| Cancel Ebarimt | DELETE | `/v2/ebarimt_v3/{id}` | Cancel an electronic tax receipt |
+
+## Typical Integration Flow
+
+1. **Create an invoice** -- Call `createSimpleInvoice` with an amount and description. You get back a QR image and bank app deep links.
+2. **Display to the user** -- Show the QR code or open a bank app deep link on mobile.
+3. **Poll for payment** -- Periodically call `checkPayment` with the invoice ID to see if payment has been received.
+4. **Receive callback** -- QPay sends a POST request to your `callback_url` when payment completes.
+5. **Issue ebarimt** -- Optionally call `createEbarimt` to generate an electronic tax receipt.
+
+## GitHub Organization
+
+All SDK repositories are hosted under the [qpay-sdk](https://github.com/qpay-sdk) GitHub organization.

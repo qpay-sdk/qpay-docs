@@ -2,7 +2,7 @@
 
 A collection of ready-to-use cURL examples for the QPay V2 API. Each script demonstrates a specific API endpoint with proper authentication, request formatting, and documented response structures.
 
-- **GitHub**: [github.com/qpay-sdk/qpay-curl](https://github.com/qpay-sdk/qpay-curl)
+[![GitHub](https://img.shields.io/github/v/tag/qpay-sdk/qpay-curl?label=GitHub)](https://github.com/qpay-sdk/qpay-curl)
 
 ## Prerequisites
 
@@ -17,32 +17,44 @@ brew install jq
 apt-get install jq
 ```
 
-## Setup
+## Installation
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/qpay-sdk/qpay-curl.git
-   cd qpay-curl
-   ```
+```bash
+git clone https://github.com/qpay-sdk/qpay-curl.git
+cd qpay-curl
+```
 
-2. Copy the example environment file and fill in your credentials:
-   ```bash
-   cp .env.example .env
-   ```
+## Configuration
 
-3. Edit `.env` with your actual values:
-   ```bash
-   QPAY_BASE_URL=https://merchant.qpay.mn
-   QPAY_USERNAME=your_username
-   QPAY_PASSWORD=your_password
-   QPAY_INVOICE_CODE=your_invoice_code
-   QPAY_CALLBACK_URL=https://your-domain.com/callback
-   ```
+1. Copy the example environment file and fill in your credentials:
 
-4. Make all scripts executable:
-   ```bash
-   chmod +x helpers/*.sh examples/**/*.sh
-   ```
+```bash
+cp .env.example .env
+```
+
+2. Edit `.env` with your actual values:
+
+```bash
+QPAY_BASE_URL=https://merchant.qpay.mn
+QPAY_USERNAME=your_username
+QPAY_PASSWORD=your_password
+QPAY_INVOICE_CODE=your_invoice_code
+QPAY_CALLBACK_URL=https://your-domain.com/callback
+```
+
+| Variable | Description |
+|---|---|
+| `QPAY_BASE_URL` | QPay API base URL |
+| `QPAY_USERNAME` | QPay merchant username |
+| `QPAY_PASSWORD` | QPay merchant password |
+| `QPAY_INVOICE_CODE` | Default invoice code |
+| `QPAY_CALLBACK_URL` | URL that QPay calls after payment |
+
+3. Make all scripts executable:
+
+```bash
+chmod +x helpers/*.sh examples/**/*.sh
+```
 
 ## Quick Start
 
@@ -53,19 +65,27 @@ source helpers/auth.sh
 # Verify the token is set
 echo "$ACCESS_TOKEN"
 
-# Now run any example
+# Run any example
 ./examples/invoice/create-simple.sh
 ```
 
-## Usage
+## Get Token
 
-### Get Token
+The auth helper authenticates using Basic Auth and exports `ACCESS_TOKEN` and `REFRESH_TOKEN` as environment variables.
 
 ```bash
 source helpers/auth.sh
 ```
 
+Or manually with cURL:
+
+```bash
+curl -s -X POST "${QPAY_BASE_URL}/v2/auth/token" \
+    -u "${QPAY_USERNAME}:${QPAY_PASSWORD}" | jq .
+```
+
 Response:
+
 ```json
 {
   "token_type": "Bearer",
@@ -76,14 +96,35 @@ Response:
 }
 ```
 
-### Create Simple Invoice
+### Refresh Token
+
+```bash
+curl -s -X POST "${QPAY_BASE_URL}/v2/auth/refresh" \
+    -H "Authorization: Bearer ${REFRESH_TOKEN}" | jq .
+```
+
+## Create Invoice
+
+### Simple Invoice
 
 ```bash
 source helpers/auth.sh
-./examples/invoice/create-simple.sh
+
+curl -s -X POST "${QPAY_BASE_URL}/v2/invoice" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "invoice_code": "'"${QPAY_INVOICE_CODE}"'",
+        "sender_invoice_no": "ORDER-001",
+        "invoice_receiver_code": "terminal",
+        "invoice_description": "Payment for Order #001",
+        "amount": 10000,
+        "callback_url": "'"${QPAY_CALLBACK_URL}"'"
+    }' | jq .
 ```
 
 Response:
+
 ```json
 {
   "invoice_id": "abc123...",
@@ -101,14 +142,35 @@ Response:
 }
 ```
 
-### Check Payment
+### Cancel Invoice
 
 ```bash
-source helpers/auth.sh
-INVOICE_ID="your_invoice_id" ./examples/payment/check-payment.sh
+INVOICE_ID="your_invoice_id"
+
+curl -s -X DELETE "${QPAY_BASE_URL}/v2/invoice/${INVOICE_ID}" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" | jq .
+```
+
+## Check Payment
+
+```bash
+INVOICE_ID="your_invoice_id"
+
+curl -s -X POST "${QPAY_BASE_URL}/v2/payment/check" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "object_type": "INVOICE",
+        "object_id": "'"${INVOICE_ID}"'",
+        "offset": {
+            "page_number": 1,
+            "page_limit": 10
+        }
+    }' | jq .
 ```
 
 Response:
+
 ```json
 {
   "count": 1,
@@ -125,21 +187,97 @@ Response:
 }
 ```
 
-### List Payments
+## List Payments
 
 ```bash
-source helpers/auth.sh
-INVOICE_ID="your_invoice_id" ./examples/payment/list-payments.sh
+INVOICE_ID="your_invoice_id"
+
+curl -s -X POST "${QPAY_BASE_URL}/v2/payment/list" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "object_type": "INVOICE",
+        "object_id": "'"${INVOICE_ID}"'",
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "offset": {
+            "page_number": 1,
+            "page_limit": 20
+        }
+    }' | jq .
 ```
 
-### Create Ebarimt
+### Get Payment Details
 
 ```bash
-source helpers/auth.sh
-PAYMENT_ID="your_payment_id" ./examples/ebarimt/create-ebarimt.sh
+PAYMENT_ID="your_payment_id"
+
+curl -s -X GET "${QPAY_BASE_URL}/v2/payment/${PAYMENT_ID}" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" | jq .
+```
+
+### Cancel Payment (Card Only)
+
+```bash
+PAYMENT_ID="your_payment_id"
+
+curl -s -X DELETE "${QPAY_BASE_URL}/v2/payment/cancel/${PAYMENT_ID}" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "callback_url": "'"${QPAY_CALLBACK_URL}"'",
+        "note": "Customer requested cancellation"
+    }' | jq .
+```
+
+### Refund Payment (Card Only)
+
+```bash
+PAYMENT_ID="your_payment_id"
+
+curl -s -X DELETE "${QPAY_BASE_URL}/v2/payment/refund/${PAYMENT_ID}" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "callback_url": "'"${QPAY_CALLBACK_URL}"'",
+        "note": "Refund requested"
+    }' | jq .
+```
+
+## Webhook Handling
+
+QPay sends a POST request to your `callback_url` when a payment completes. You can verify callbacks by checking the payment status:
+
+```bash
+# In your callback handler, extract payment_id from the POST body, then verify:
+curl -s -X POST "${QPAY_BASE_URL}/v2/payment/check" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "object_type": "INVOICE",
+        "object_id": "'"${PAYMENT_ID}"'"
+    }' | jq .
+```
+
+If `count > 0`, the payment is confirmed.
+
+## Create Ebarimt
+
+```bash
+PAYMENT_ID="your_payment_id"
+
+curl -s -X POST "${QPAY_BASE_URL}/v2/ebarimt_v3/create" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "payment_id": "'"${PAYMENT_ID}"'",
+        "ebarimt_receiver_type": "83",
+        "district_code": "23"
+    }' | jq .
 ```
 
 Response:
+
 ```json
 {
   "id": "...",
@@ -151,6 +289,40 @@ Response:
   "barimt_status": "CREATED"
 }
 ```
+
+### Cancel Ebarimt
+
+```bash
+PAYMENT_ID="your_payment_id"
+
+curl -s -X DELETE "${QPAY_BASE_URL}/v2/ebarimt_v3/${PAYMENT_ID}" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" | jq .
+```
+
+## Error Handling
+
+All QPay API errors return JSON with an `error` code and `message`:
+
+```json
+{
+  "error": "INVOICE_NOTFOUND",
+  "message": "Invoice not found"
+}
+```
+
+Common error codes:
+
+| Error Code | HTTP Status | Description |
+|---|---|---|
+| `AUTHENTICATION_FAILED` | 401 | Invalid credentials |
+| `PERMISSION_DENIED` | 403 | No permission for this operation |
+| `INVOICE_NOTFOUND` | 404 | Invoice does not exist |
+| `INVOICE_PAID` | 400 | Invoice has already been paid |
+| `INVOICE_ALREADY_CANCELED` | 400 | Invoice was already canceled |
+| `INVOICE_CODE_INVALID` | 400 | Invalid invoice code |
+| `INVALID_AMOUNT` | 400 | Amount is out of valid range |
+| `PAYMENT_NOTFOUND` | 404 | Payment does not exist |
+| `PAYMENT_ALREADY_CANCELED` | 400 | Payment was already canceled |
 
 ## Available Scripts
 
@@ -170,12 +342,22 @@ Response:
 | `examples/ebarimt/create-ebarimt.sh` | POST | `/v2/ebarimt_v3/create` | Create ebarimt |
 | `examples/ebarimt/cancel-ebarimt.sh` | DELETE | `/v2/ebarimt_v3/{id}` | Cancel ebarimt |
 
-## Environment Variables
+## API Reference
 
-| Variable | Description | Example |
+| Endpoint | Method | Description |
 |---|---|---|
-| `QPAY_BASE_URL` | QPay API base URL | `https://merchant.qpay.mn` |
-| `QPAY_USERNAME` | QPay merchant username | `your_username` |
-| `QPAY_PASSWORD` | QPay merchant password | `your_password` |
-| `QPAY_INVOICE_CODE` | Default invoice code | `your_invoice_code` |
-| `QPAY_CALLBACK_URL` | URL that QPay calls after payment | `https://your-domain.com/callback` |
+| `/v2/auth/token` | POST | Authenticate (Basic Auth) and get tokens |
+| `/v2/auth/refresh` | POST | Refresh access token (Bearer refresh_token) |
+| `/v2/invoice` | POST | Create an invoice |
+| `/v2/invoice/{id}` | DELETE | Cancel an invoice |
+| `/v2/payment/{id}` | GET | Get payment details |
+| `/v2/payment/check` | POST | Check payment status |
+| `/v2/payment/list` | POST | List payments |
+| `/v2/payment/cancel/{id}` | DELETE | Cancel a card payment |
+| `/v2/payment/refund/{id}` | DELETE | Refund a card payment |
+| `/v2/ebarimt_v3/create` | POST | Create an ebarimt receipt |
+| `/v2/ebarimt_v3/{id}` | DELETE | Cancel an ebarimt receipt |
+
+## Links
+
+- **GitHub**: [github.com/qpay-sdk/qpay-curl](https://github.com/qpay-sdk/qpay-curl)

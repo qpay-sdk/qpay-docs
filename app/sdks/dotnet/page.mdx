@@ -1,9 +1,9 @@
 # .NET SDK (C#)
 
-QPay V2 API client for .NET. Provides automatic token management, full async/await support, and covers all QPay V2 endpoints including invoices, payments, and ebarimt.
+QPay V2 API client for .NET. Full async/await support, automatic token management with `SemaphoreSlim`, `System.Text.Json` serialization, and implements `IDisposable` for proper resource cleanup.
 
-- **NuGet**: [QPay](https://www.nuget.org/packages/QPay)
-- **GitHub**: [github.com/qpay-sdk/qpay-dotnet](https://github.com/qpay-sdk/qpay-dotnet)
+[![NuGet](https://img.shields.io/nuget/v/QPay)](https://www.nuget.org/packages/QPay)
+[![GitHub](https://img.shields.io/github/v/tag/qpay-sdk/qpay-dotnet?label=GitHub)](https://github.com/qpay-sdk/qpay-dotnet)
 
 ## Installation
 
@@ -23,32 +23,6 @@ Install-Package QPay
 
 ```xml
 <PackageReference Include="QPay" Version="1.0.0" />
-```
-
-## Quick Start
-
-```csharp
-using QPay;
-using QPay.Models;
-
-// Configure from environment variables
-var config = QPayConfig.LoadFromEnvironment();
-using var client = new QPayClient(config);
-
-// Create a simple invoice
-var invoice = await client.CreateSimpleInvoiceAsync(new CreateSimpleInvoiceRequest
-{
-    InvoiceCode = "YOUR_INVOICE_CODE",
-    SenderInvoiceNo = "ORDER-001",
-    InvoiceReceiverCode = "terminal",
-    InvoiceDescription = "Payment for Order #001",
-    Amount = 50000,
-    CallbackUrl = "https://yoursite.com/api/qpay/callback",
-});
-
-Console.WriteLine($"Invoice ID: {invoice.InvoiceId}");
-Console.WriteLine($"QR Image: {invoice.QRImage}");
-Console.WriteLine($"Short URL: {invoice.QPayShortUrl}");
 ```
 
 ## Configuration
@@ -87,9 +61,33 @@ var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
 using var client = new QPayClient(config, httpClient);
 ```
 
-## Usage
+## Quick Start
 
-### Create Simple Invoice
+```csharp
+using QPay;
+using QPay.Models;
+
+var config = QPayConfig.LoadFromEnvironment();
+using var client = new QPayClient(config);
+
+var invoice = await client.CreateSimpleInvoiceAsync(new CreateSimpleInvoiceRequest
+{
+    InvoiceCode = config.InvoiceCode,
+    SenderInvoiceNo = "ORDER-001",
+    InvoiceReceiverCode = "terminal",
+    InvoiceDescription = "Payment for Order #001",
+    Amount = 50000,
+    CallbackUrl = config.CallbackUrl,
+});
+
+Console.WriteLine($"Invoice ID: {invoice.InvoiceId}");
+Console.WriteLine($"QR Image: {invoice.QRImage}");
+Console.WriteLine($"Short URL: {invoice.QPayShortUrl}");
+```
+
+## Create Invoice
+
+### Simple Invoice
 
 ```csharp
 var invoice = await client.CreateSimpleInvoiceAsync(new CreateSimpleInvoiceRequest
@@ -103,7 +101,13 @@ var invoice = await client.CreateSimpleInvoiceAsync(new CreateSimpleInvoiceReque
 });
 ```
 
-### Check Payment
+### Cancel Invoice
+
+```csharp
+await client.CancelInvoiceAsync("invoice-id-here");
+```
+
+## Check Payment
 
 ```csharp
 var check = await client.CheckPaymentAsync(new PaymentCheckRequest
@@ -112,24 +116,29 @@ var check = await client.CheckPaymentAsync(new PaymentCheckRequest
     ObjectId = "invoice-id-here",
 });
 
-Console.WriteLine($"Paid: {check.Count > 0}");
-Console.WriteLine($"Total Paid: {check.PaidAmount}");
-
-foreach (var row in check.Rows)
+if (check.Count > 0)
 {
-    Console.WriteLine($"  Payment {row.PaymentId}: {row.PaymentStatus} ({row.PaymentAmount} {row.PaymentCurrency})");
+    Console.WriteLine($"Payment received! Paid: {check.PaidAmount} MNT");
+    foreach (var row in check.Rows)
+    {
+        Console.WriteLine($"  {row.PaymentId}: {row.PaymentStatus} ({row.PaymentAmount} {row.PaymentCurrency})");
+    }
+}
+else
+{
+    Console.WriteLine("No payment yet");
 }
 ```
 
-### List Payments
+## List Payments
 
 ```csharp
 var list = await client.ListPaymentsAsync(new PaymentListRequest
 {
     ObjectType = "INVOICE",
     ObjectId = "invoice-id-here",
-    StartDate = "2025-01-01",
-    EndDate = "2025-12-31",
+    StartDate = "2024-01-01",
+    EndDate = "2024-12-31",
     Offset = new Offset { PageNumber = 1, PageLimit = 20 },
 });
 
@@ -140,20 +149,84 @@ foreach (var item in list.Rows)
 }
 ```
 
-### Create Ebarimt
+Get details for a single payment:
 
 ```csharp
-var ebarimt = await client.CreateEbarimtAsync(new CreateEbarimtRequest
+var detail = await client.GetPaymentAsync("payment-id-here");
+Console.WriteLine($"Payment {detail.PaymentId}: {detail.PaymentStatus}");
+```
+
+## Webhook Handling
+
+QPay sends a POST request to your `CallbackUrl` when a payment completes.
+
+### ASP.NET Core Minimal API
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+
+var config = QPayConfig.LoadFromEnvironment();
+using var qpayClient = new QPayClient(config);
+
+app.MapPost("/api/qpay/callback", async (HttpRequest request) =>
 {
-    PaymentId = "payment-id-here",
-    EbarimtReceiverType = "CITIZEN",
-    EbarimtReceiver = "AA12345678",
-    DistrictCode = "34",
+    var body = await request.ReadFromJsonAsync<Dictionary<string, string>>();
+    var paymentId = body?["payment_id"];
+
+    if (paymentId is null) return Results.BadRequest();
+
+    var result = await qpayClient.CheckPaymentAsync(new PaymentCheckRequest
+    {
+        ObjectType = "INVOICE",
+        ObjectId = paymentId,
+    });
+
+    if (result.Count > 0)
+    {
+        // Payment verified -- update your order status
+        Console.WriteLine($"Payment confirmed: {paymentId} ({result.PaidAmount} MNT)");
+    }
+
+    return Results.Ok(new { status = "ok" });
 });
 
-Console.WriteLine($"Ebarimt ID: {ebarimt.Id}");
-Console.WriteLine($"QR: {ebarimt.EbarimtQRData}");
-Console.WriteLine($"Lottery: {ebarimt.EbarimtLottery}");
+app.Run();
+```
+
+### ASP.NET Core Controller
+
+```csharp
+[ApiController]
+[Route("api/qpay")]
+public class QPayCallbackController : ControllerBase
+{
+    private readonly QPayClient _client;
+
+    public QPayCallbackController()
+    {
+        var config = QPayConfig.LoadFromEnvironment();
+        _client = new QPayClient(config);
+    }
+
+    [HttpPost("callback")]
+    public async Task<IActionResult> Callback([FromBody] Dictionary<string, string> body)
+    {
+        var paymentId = body["payment_id"];
+        var result = await _client.CheckPaymentAsync(new PaymentCheckRequest
+        {
+            ObjectType = "INVOICE",
+            ObjectId = paymentId,
+        });
+
+        if (result.Count > 0)
+        {
+            // Payment verified
+        }
+
+        return Ok(new { status = "ok" });
+    }
+}
 ```
 
 ## Error Handling
@@ -167,8 +240,8 @@ try
 }
 catch (QPayException ex)
 {
-    Console.WriteLine($"Status Code: {ex.StatusCode}");
-    Console.WriteLine($"Error Code: {ex.Code}");
+    Console.WriteLine($"Status Code: {ex.StatusCode}");   // e.g., 404
+    Console.WriteLine($"Error Code: {ex.Code}");           // e.g., "INVOICE_NOTFOUND"
     Console.WriteLine($"Message: {ex.Message}");
     Console.WriteLine($"Raw Body: {ex.RawBody}");
 }
@@ -177,6 +250,12 @@ catch (QPayException ex)
 ### Error Code Constants
 
 ```csharp
+using QPay;
+
+try
+{
+    await client.CancelInvoiceAsync("some-id");
+}
 catch (QPayException ex) when (ex.Code == ErrorCodes.InvoiceNotFound)
 {
     Console.WriteLine("Invoice does not exist");
@@ -189,24 +268,34 @@ catch (QPayException ex) when (ex.Code == ErrorCodes.AuthenticationFailed)
 {
     Console.WriteLine("Invalid credentials");
 }
+catch (QPayException ex) when (ex.Code == ErrorCodes.PermissionDenied)
+{
+    Console.WriteLine("Permission denied");
+}
 ```
 
 ## API Reference
 
-| Method | Description | HTTP |
-|---|---|---|
-| `GetTokenAsync()` | Authenticate and get token pair | `POST /v2/auth/token` |
-| `RefreshTokenAsync()` | Refresh access token | `POST /v2/auth/refresh` |
-| `CreateInvoiceAsync(request)` | Create detailed invoice | `POST /v2/invoice` |
-| `CreateSimpleInvoiceAsync(request)` | Create simple invoice | `POST /v2/invoice` |
-| `CreateEbarimtInvoiceAsync(request)` | Create invoice with ebarimt | `POST /v2/invoice` |
-| `CancelInvoiceAsync(invoiceId)` | Cancel invoice | `DELETE /v2/invoice/{id}` |
-| `GetPaymentAsync(paymentId)` | Get payment details | `GET /v2/payment/{id}` |
-| `CheckPaymentAsync(request)` | Check payment status | `POST /v2/payment/check` |
-| `ListPaymentsAsync(request)` | List payments | `POST /v2/payment/list` |
-| `CancelPaymentAsync(paymentId, request?)` | Cancel payment (card) | `DELETE /v2/payment/cancel/{id}` |
-| `RefundPaymentAsync(paymentId, request?)` | Refund payment (card) | `DELETE /v2/payment/refund/{id}` |
-| `CreateEbarimtAsync(request)` | Create ebarimt | `POST /v2/ebarimt_v3/create` |
-| `CancelEbarimtAsync(paymentId)` | Cancel ebarimt | `DELETE /v2/ebarimt_v3/{id}` |
-
 All methods accept an optional `CancellationToken` parameter.
+
+| Method | Description | Returns |
+|---|---|---|
+| `GetTokenAsync()` | Authenticate and get token pair | `Task<TokenResponse>` |
+| `RefreshTokenAsync()` | Refresh access token | `Task<TokenResponse>` |
+| `CreateInvoiceAsync(request)` | Create detailed invoice | `Task<InvoiceResponse>` |
+| `CreateSimpleInvoiceAsync(request)` | Create simple invoice | `Task<InvoiceResponse>` |
+| `CreateEbarimtInvoiceAsync(request)` | Create invoice with ebarimt | `Task<InvoiceResponse>` |
+| `CancelInvoiceAsync(invoiceId)` | Cancel invoice | `Task` |
+| `GetPaymentAsync(paymentId)` | Get payment details | `Task<PaymentDetail>` |
+| `CheckPaymentAsync(request)` | Check payment status | `Task<PaymentCheckResponse>` |
+| `ListPaymentsAsync(request)` | List payments | `Task<PaymentListResponse>` |
+| `CancelPaymentAsync(paymentId, request?)` | Cancel payment (card) | `Task` |
+| `RefundPaymentAsync(paymentId, request?)` | Refund payment (card) | `Task` |
+| `CreateEbarimtAsync(request)` | Create ebarimt | `Task<EbarimtResponse>` |
+| `CancelEbarimtAsync(paymentId)` | Cancel ebarimt | `Task<EbarimtResponse>` |
+| `Dispose()` | Release resources | `void` |
+
+## Links
+
+- **NuGet**: [nuget.org/packages/QPay](https://www.nuget.org/packages/QPay)
+- **GitHub**: [github.com/qpay-sdk/qpay-dotnet](https://github.com/qpay-sdk/qpay-dotnet)

@@ -1,14 +1,58 @@
 # Python SDK
 
-Python SDK for the QPay V2 API. Provides both synchronous and asynchronous clients with automatic token management, typed request/response objects, and comprehensive error handling.
+Python client library for the QPay V2 API. Provides both synchronous (`QPayClient`) and asynchronous (`AsyncQPayClient`) clients with automatic token management, typed request/response dataclasses, and comprehensive error handling. Built on `httpx`.
 
-- **PyPI**: [qpay-py](https://pypi.org/project/qpay-py/)
-- **GitHub**: [github.com/qpay-sdk/qpay-py](https://github.com/qpay-sdk/qpay-py)
+[![PyPI](https://img.shields.io/pypi/v/qpay-py)](https://pypi.org/project/qpay-py/)
+[![GitHub](https://img.shields.io/github/v/tag/qpay-sdk/qpay-py?label=GitHub)](https://github.com/qpay-sdk/qpay-py)
 
 ## Installation
 
 ```bash
 pip install qpay-py
+```
+
+Requires Python 3.9+.
+
+## Configuration
+
+### From Environment Variables
+
+```python
+from qpay import QPayConfig
+
+config = QPayConfig.from_env()
+```
+
+| Variable | Description |
+|---|---|
+| `QPAY_BASE_URL` | QPay API base URL (e.g., `https://merchant.qpay.mn`) |
+| `QPAY_USERNAME` | QPay merchant username |
+| `QPAY_PASSWORD` | QPay merchant password |
+| `QPAY_INVOICE_CODE` | Default invoice code |
+| `QPAY_CALLBACK_URL` | Payment callback URL |
+
+### Manual Configuration
+
+```python
+from qpay import QPayConfig
+
+config = QPayConfig(
+    base_url="https://merchant.qpay.mn",
+    username="your_username",
+    password="your_password",
+    invoice_code="YOUR_INVOICE_CODE",
+    callback_url="https://yoursite.com/callback",
+)
+```
+
+### Custom HTTP Client
+
+```python
+import httpx
+from qpay import QPayClient, QPayConfig
+
+http_client = httpx.Client(timeout=60.0)
+client = QPayClient(config, http_client=http_client)
 ```
 
 ## Quick Start
@@ -18,13 +62,7 @@ pip install qpay-py
 ```python
 from qpay import QPayClient, QPayConfig, CreateSimpleInvoiceRequest
 
-config = QPayConfig(
-    base_url="https://merchant.qpay.mn",
-    username="your_username",
-    password="your_password",
-    invoice_code="YOUR_INVOICE_CODE",
-    callback_url="https://yoursite.com/callback",
-)
+config = QPayConfig.from_env()
 
 with QPayClient(config) as client:
     invoice = client.create_simple_invoice(
@@ -48,13 +86,7 @@ with QPayClient(config) as client:
 import asyncio
 from qpay import AsyncQPayClient, QPayConfig, CreateSimpleInvoiceRequest
 
-config = QPayConfig(
-    base_url="https://merchant.qpay.mn",
-    username="your_username",
-    password="your_password",
-    invoice_code="YOUR_INVOICE_CODE",
-    callback_url="https://yoursite.com/callback",
-)
+config = QPayConfig.from_env()
 
 async def main():
     async with AsyncQPayClient(config) as client:
@@ -73,41 +105,7 @@ async def main():
 asyncio.run(main())
 ```
 
-## Configuration
-
-### From Environment Variables
-
-```python
-from qpay import QPayConfig
-
-config = QPayConfig.from_env()
-```
-
-| Variable | Description |
-|---|---|
-| `QPAY_BASE_URL` | QPay API base URL |
-| `QPAY_USERNAME` | QPay merchant username |
-| `QPAY_PASSWORD` | QPay merchant password |
-| `QPAY_INVOICE_CODE` | Default invoice code |
-| `QPAY_CALLBACK_URL` | Payment callback URL |
-
-### Manual Configuration
-
-```python
-from qpay import QPayConfig
-
-config = QPayConfig(
-    base_url="https://merchant.qpay.mn",
-    username="your_username",
-    password="your_password",
-    invoice_code="YOUR_INVOICE_CODE",
-    callback_url="https://yoursite.com/callback",
-)
-```
-
-## Usage
-
-### Create Simple Invoice
+## Create Invoice
 
 ```python
 from qpay import CreateSimpleInvoiceRequest
@@ -122,9 +120,21 @@ invoice = client.create_simple_invoice(
         callback_url="https://yoursite.com/callback",
     )
 )
+
+print(f"Invoice ID: {invoice.invoice_id}")
+print(f"QR Text: {invoice.qr_text}")
+print(f"Short URL: {invoice.qpay_short_url}")
+for url in invoice.urls:
+    print(f"  {url['name']}: {url['link']}")
 ```
 
-### Check Payment
+Cancel an invoice:
+
+```python
+client.cancel_invoice("invoice-id-here")
+```
+
+## Check Payment
 
 ```python
 from qpay import PaymentCheckRequest, Offset
@@ -136,12 +146,16 @@ result = client.check_payment(
         offset=Offset(page_number=1, page_limit=10),
     )
 )
-print(f"Paid: {result.paid_amount}")
-for row in result.rows:
-    print(f"  Payment {row.payment_id}: {row.payment_status}")
+
+if result.count > 0:
+    print(f"Payment received! Paid: {result.paid_amount}")
+    for row in result.rows:
+        print(f"  {row.payment_id}: {row.payment_status} ({row.payment_amount} {row.payment_currency})")
+else:
+    print("No payment yet")
 ```
 
-### List Payments
+## List Payments
 
 ```python
 from qpay import PaymentListRequest, Offset
@@ -155,61 +169,28 @@ result = client.list_payments(
         offset=Offset(page_number=1, page_limit=20),
     )
 )
+
 print(f"Total: {result.count}")
 for item in result.rows:
-    print(f"  {item.payment_id} - {item.payment_amount} {item.payment_currency}")
+    print(f"  {item.payment_id} | {item.payment_amount} {item.payment_currency} | {item.payment_status}")
 ```
 
-### Create Ebarimt
+Get details for a single payment:
 
 ```python
-from qpay import CreateEbarimtRequest
-
-ebarimt = client.create_ebarimt(
-    CreateEbarimtRequest(
-        payment_id="payment-id-here",
-        ebarimt_receiver_type="83",
-    )
-)
-print(f"Lottery: {ebarimt.ebarimt_lottery}")
-print(f"QR Data: {ebarimt.ebarimt_qr_data}")
+detail = client.get_payment("payment-id-here")
+print(f"Payment {detail.payment_id}: {detail.payment_status} ({detail.payment_amount} {detail.payment_currency})")
 ```
 
-## Error Handling
+## Webhook Handling
+
+QPay sends a POST request to your `callback_url` when a payment completes.
+
+### FastAPI
 
 ```python
-from qpay import QPayError, is_qpay_error
-
-try:
-    client.cancel_invoice("nonexistent-id")
-except QPayError as e:
-    print(f"Status: {e.status_code}")  # e.g. 404
-    print(f"Code:   {e.code}")         # e.g. "INVOICE_NOTFOUND"
-    print(f"Msg:    {e.message}")      # e.g. "Invoice not found"
-    print(f"Raw:    {e.raw_body}")     # full response body
-```
-
-### Error Code Constants
-
-```python
-from qpay import ERR_INVOICE_NOT_FOUND, ERR_PAYMENT_ALREADY_CANCELED, QPayError
-
-try:
-    client.cancel_invoice("some-id")
-except QPayError as e:
-    if e.code == ERR_INVOICE_NOT_FOUND:
-        print("Invoice does not exist")
-    elif e.code == ERR_PAYMENT_ALREADY_CANCELED:
-        print("Already canceled")
-    else:
-        raise
-```
-
-## FastAPI Integration
-
-```python
-from fastapi import FastAPI, HTTPException
-from qpay import AsyncQPayClient, QPayConfig, QPayError, CreateSimpleInvoiceRequest
+from fastapi import FastAPI, HTTPException, Request
+from qpay import AsyncQPayClient, QPayConfig, QPayError, PaymentCheckRequest
 
 app = FastAPI()
 config = QPayConfig.from_env()
@@ -219,22 +200,99 @@ qpay = AsyncQPayClient(config)
 async def shutdown():
     await qpay.close()
 
-@app.post("/create-invoice")
-async def create_invoice(amount: float, description: str):
+@app.post("/api/qpay/callback")
+async def qpay_callback(request: Request):
+    body = await request.json()
+    payment_id = body.get("payment_id")
+
     try:
-        invoice = await qpay.create_simple_invoice(
-            CreateSimpleInvoiceRequest(
-                invoice_code=config.invoice_code,
-                sender_invoice_no="ORDER-001",
-                invoice_receiver_code="terminal",
-                invoice_description=description,
-                amount=amount,
-                callback_url=config.callback_url,
+        result = await qpay.check_payment(
+            PaymentCheckRequest(
+                object_type="INVOICE",
+                object_id=payment_id,
             )
         )
-        return {"invoice_id": invoice.invoice_id, "qr_image": invoice.qr_image}
+        if result.count > 0:
+            # Payment verified -- update your order status
+            print(f"Payment confirmed: {payment_id} ({result.paid_amount} MNT)")
     except QPayError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
+
+    return {"status": "ok"}
+```
+
+### Django
+
+```python
+import json
+from django.http import JsonResponse, HttpResponseBadRequest
+from django.views.decorators.csrf import csrf_exempt
+from qpay import QPayClient, QPayConfig, PaymentCheckRequest
+
+config = QPayConfig.from_env()
+
+@csrf_exempt
+def qpay_callback(request):
+    if request.method != "POST":
+        return HttpResponseBadRequest("Method not allowed")
+
+    body = json.loads(request.body)
+    payment_id = body.get("payment_id")
+
+    with QPayClient(config) as client:
+        result = client.check_payment(
+            PaymentCheckRequest(
+                object_type="INVOICE",
+                object_id=payment_id,
+            )
+        )
+        if result.count > 0:
+            # Payment verified -- update your order status
+            pass
+
+    return JsonResponse({"status": "ok"})
+```
+
+## Error Handling
+
+```python
+from qpay import QPayError
+
+try:
+    client.cancel_invoice("nonexistent-id")
+except QPayError as e:
+    print(f"Status: {e.status_code}")   # e.g., 404
+    print(f"Code:   {e.code}")          # e.g., "INVOICE_NOTFOUND"
+    print(f"Msg:    {e.message}")       # e.g., "Invoice not found"
+    print(f"Raw:    {e.raw_body}")      # full response body
+```
+
+### Error Code Constants
+
+```python
+from qpay import (
+    ERR_AUTHENTICATION_FAILED,
+    ERR_INVOICE_NOT_FOUND,
+    ERR_INVOICE_PAID,
+    ERR_INVOICE_ALREADY_CANCELED,
+    ERR_INVALID_AMOUNT,
+    ERR_PAYMENT_NOT_FOUND,
+    ERR_PAYMENT_ALREADY_CANCELED,
+    ERR_PERMISSION_DENIED,
+    QPayError,
+)
+
+try:
+    client.cancel_invoice("some-id")
+except QPayError as e:
+    if e.code == ERR_INVOICE_NOT_FOUND:
+        print("Invoice does not exist")
+    elif e.code == ERR_INVOICE_PAID:
+        print("Invoice has already been paid")
+    elif e.code == ERR_INVOICE_ALREADY_CANCELED:
+        print("Already canceled")
+    else:
+        raise
 ```
 
 ## API Reference
@@ -254,3 +312,11 @@ async def create_invoice(amount: float, description: str):
 | `refund_payment(id, req)` | `None` | Refund a payment |
 | `create_ebarimt(req)` | `EbarimtResponse` | Create an ebarimt receipt |
 | `cancel_ebarimt(id)` | `EbarimtResponse` | Cancel an ebarimt receipt |
+| `close()` | `None` | Close the underlying HTTP client |
+
+The `AsyncQPayClient` has the same methods, all returning coroutines (`async`/`await`).
+
+## Links
+
+- **PyPI**: [pypi.org/project/qpay-py](https://pypi.org/project/qpay-py/)
+- **GitHub**: [github.com/qpay-sdk/qpay-py](https://github.com/qpay-sdk/qpay-py)

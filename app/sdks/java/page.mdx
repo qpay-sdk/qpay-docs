@@ -1,10 +1,11 @@
 # Java SDK
 
-Java SDK for the QPay V2 API. Provides a type-safe client with automatic token management, builder-pattern request construction, and comprehensive error handling.
+Java client library for the QPay V2 API. Uses the Java 17+ `HttpClient`, builder-pattern request construction, Jackson JSON serialization, and synchronized token management.
 
-- **GitHub**: [github.com/qpay-sdk/qpay-java](https://github.com/qpay-sdk/qpay-java)
-- **Maven Central**: [io.github.qpay-sdk:qpay-java](https://central.sonatype.com/artifact/io.github.qpay-sdk/qpay-java)
-- **Requirements**: Java 17+, Maven or Gradle
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.qpay-sdk/qpay-java)](https://central.sonatype.com/artifact/io.github.qpay-sdk/qpay-java)
+[![GitHub](https://img.shields.io/github/v/tag/qpay-sdk/qpay-java?label=GitHub)](https://github.com/qpay-sdk/qpay-java)
+
+**Requirements**: Java 17+, Maven or Gradle
 
 ## Installation
 
@@ -30,43 +31,13 @@ implementation 'io.github.qpay-sdk:qpay-java:1.0.0'
 implementation("io.github.qpay-sdk:qpay-java:1.0.0")
 ```
 
-## Quick Start
-
-```java
-import mn.qpay.sdk.*;
-import mn.qpay.sdk.models.*;
-
-// Configure the client
-QPayConfig config = QPayConfig.builder()
-        .baseURL("https://merchant.qpay.mn")
-        .username("YOUR_USERNAME")
-        .password("YOUR_PASSWORD")
-        .invoiceCode("YOUR_INVOICE_CODE")
-        .callbackURL("https://yoursite.com/payment/callback")
-        .build();
-
-QPayClient client = new QPayClient(config);
-
-InvoiceResponse invoice = client.createSimpleInvoice(
-        CreateSimpleInvoiceRequest.builder()
-                .invoiceCode(config.getInvoiceCode())
-                .senderInvoiceNo("ORDER-001")
-                .invoiceDescription("Payment for Order #001")
-                .amount(50000.0)
-                .callbackURL(config.getCallbackURL())
-                .build()
-);
-
-System.out.println("Invoice ID: " + invoice.getInvoiceId());
-System.out.println("QR Image: " + invoice.getQrImage());
-System.out.println("Short URL: " + invoice.getQPayShortUrl());
-```
-
 ## Configuration
 
 ### Builder Pattern
 
 ```java
+import mn.qpay.sdk.QPayConfig;
+
 QPayConfig config = QPayConfig.builder()
         .baseURL("https://merchant.qpay.mn")
         .username("YOUR_USERNAME")
@@ -90,9 +61,50 @@ QPayConfig config = QPayConfig.fromEnv();
 | `QPAY_INVOICE_CODE` | Default invoice code |
 | `QPAY_CALLBACK_URL` | Payment callback URL |
 
-## Usage
+### Custom HttpClient
 
-### Create Simple Invoice
+```java
+import java.net.http.HttpClient;
+import java.time.Duration;
+
+HttpClient httpClient = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(60))
+        .build();
+
+QPayClient client = new QPayClient(config, httpClient);
+```
+
+## Quick Start
+
+```java
+import mn.qpay.sdk.*;
+import mn.qpay.sdk.models.*;
+
+QPayConfig config = QPayConfig.fromEnv();
+QPayClient client = new QPayClient(config);
+
+InvoiceResponse invoice = client.createSimpleInvoice(
+        CreateSimpleInvoiceRequest.builder()
+                .invoiceCode(config.getInvoiceCode())
+                .senderInvoiceNo("ORDER-001")
+                .invoiceDescription("Payment for Order #001")
+                .amount(50000.0)
+                .callbackURL(config.getCallbackURL())
+                .build()
+);
+
+System.out.println("Invoice ID: " + invoice.getInvoiceId());
+System.out.println("QR Image: " + invoice.getQrImage());
+System.out.println("Short URL: " + invoice.getQPayShortUrl());
+
+for (var url : invoice.getUrls()) {
+    System.out.println("  " + url.getName() + ": " + url.getLink());
+}
+```
+
+## Create Invoice
+
+### Simple Invoice
 
 ```java
 CreateSimpleInvoiceRequest request = CreateSimpleInvoiceRequest.builder()
@@ -106,7 +118,13 @@ CreateSimpleInvoiceRequest request = CreateSimpleInvoiceRequest.builder()
 InvoiceResponse invoice = client.createSimpleInvoice(request);
 ```
 
-### Check Payment
+### Cancel Invoice
+
+```java
+client.cancelInvoice("invoice-id-here");
+```
+
+## Check Payment
 
 ```java
 import mn.qpay.sdk.models.common.Offset;
@@ -119,15 +137,18 @@ PaymentCheckRequest request = PaymentCheckRequest.builder()
 
 PaymentCheckResponse response = client.checkPayment(request);
 
-System.out.println("Payment count: " + response.getCount());
-System.out.println("Paid amount: " + response.getPaidAmount());
-
-for (PaymentCheckResponse.PaymentCheckRow row : response.getRows()) {
-    System.out.println("Payment " + row.getPaymentId() + ": " + row.getPaymentStatus());
+if (response.getCount() > 0) {
+    System.out.println("Payment received! Paid: " + response.getPaidAmount());
+    for (PaymentCheckResponse.PaymentCheckRow row : response.getRows()) {
+        System.out.println("  " + row.getPaymentId() + ": " + row.getPaymentStatus()
+                + " (" + row.getPaymentAmount() + " " + row.getPaymentCurrency() + ")");
+    }
+} else {
+    System.out.println("No payment yet");
 }
 ```
 
-### List Payments
+## List Payments
 
 ```java
 PaymentListRequest request = PaymentListRequest.builder()
@@ -140,27 +161,59 @@ PaymentListRequest request = PaymentListRequest.builder()
 
 PaymentListResponse response = client.listPayments(request);
 
-System.out.println("Total payments: " + response.getCount());
+System.out.println("Total: " + response.getCount());
 for (PaymentListResponse.PaymentListItem item : response.getRows()) {
-    System.out.println(item.getPaymentId() + " - " + item.getPaymentAmount() + " MNT");
+    System.out.println("  " + item.getPaymentId() + " | " + item.getPaymentAmount()
+            + " MNT | " + item.getPaymentStatus());
 }
 ```
 
-### Create Ebarimt
+Get details for a single payment:
 
 ```java
-CreateEbarimtRequest request = CreateEbarimtRequest.builder()
-        .paymentId("PAYMENT_ID")
-        .ebarimtReceiverType("individual")
-        .ebarimtReceiver("AA12345678")
-        .districtCode("01")
-        .build();
+PaymentDetail detail = client.getPayment("payment-id-here");
+System.out.println("Payment " + detail.getPaymentId() + ": " + detail.getPaymentStatus());
+```
 
-EbarimtResponse ebarimt = client.createEbarimt(request);
+## Webhook Handling
 
-System.out.println("Ebarimt ID: " + ebarimt.getId());
-System.out.println("QR Data: " + ebarimt.getEbarimtQrData());
-System.out.println("Lottery: " + ebarimt.getEbarimtLottery());
+QPay sends a POST request to your `callbackURL` when a payment completes.
+
+### Spring Boot
+
+```java
+import mn.qpay.sdk.*;
+import mn.qpay.sdk.models.*;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+public class QPayCallbackController {
+
+    private final QPayClient qpayClient;
+
+    public QPayCallbackController() {
+        this.qpayClient = new QPayClient(QPayConfig.fromEnv());
+    }
+
+    @PostMapping("/api/qpay/callback")
+    public Map<String, String> handleCallback(@RequestBody Map<String, String> body) {
+        String paymentId = body.get("payment_id");
+
+        PaymentCheckResponse result = qpayClient.checkPayment(
+                PaymentCheckRequest.builder()
+                        .objectType("INVOICE")
+                        .objectId(paymentId)
+                        .build()
+        );
+
+        if (result.getCount() > 0) {
+            // Payment verified -- update your order status
+            System.out.println("Payment confirmed: " + paymentId);
+        }
+
+        return Map.of("status", "ok");
+    }
+}
 ```
 
 ## Error Handling
@@ -171,8 +224,8 @@ All API errors throw `QPayException`, which is a `RuntimeException`:
 try {
     client.createSimpleInvoice(request);
 } catch (QPayException e) {
-    System.err.println("Status code: " + e.getStatusCode());
-    System.err.println("Error code: " + e.getCode());
+    System.err.println("Status: " + e.getStatusCode());   // e.g., 400
+    System.err.println("Code: " + e.getCode());            // e.g., "INVOICE_CODE_INVALID"
     System.err.println("Message: " + e.getMessage());
     System.err.println("Raw body: " + e.getRawBody());
 }
@@ -181,13 +234,17 @@ try {
 ### Error Code Constants
 
 ```java
+import mn.qpay.sdk.ErrorCodes;
+
 try {
     client.getPayment("invalid-id");
 } catch (QPayException e) {
     if (ErrorCodes.PAYMENT_NOTFOUND.equals(e.getCode())) {
         System.out.println("Payment does not exist");
     } else if (ErrorCodes.AUTHENTICATION_FAILED.equals(e.getCode())) {
-        System.out.println("Authentication failed, check credentials");
+        System.out.println("Authentication failed");
+    } else if (ErrorCodes.PERMISSION_DENIED.equals(e.getCode())) {
+        System.out.println("Permission denied");
     } else {
         System.out.println("Unexpected error: " + e);
     }
@@ -196,17 +253,22 @@ try {
 
 ## API Reference
 
-| Method | HTTP | Path | Description |
-|---|---|---|---|
-| `getToken()` | POST | `/v2/auth/token` | Authenticate and get token pair |
-| `refreshToken()` | POST | `/v2/auth/refresh` | Refresh access token |
-| `createInvoice(req)` | POST | `/v2/invoice` | Create invoice with full options |
-| `createSimpleInvoice(req)` | POST | `/v2/invoice` | Create invoice with minimal fields |
-| `cancelInvoice(id)` | DELETE | `/v2/invoice/{id}` | Cancel an invoice |
-| `getPayment(id)` | GET | `/v2/payment/{id}` | Get payment details |
-| `checkPayment(req)` | POST | `/v2/payment/check` | Check payment status |
-| `listPayments(req)` | POST | `/v2/payment/list` | List payments |
-| `cancelPayment(id, url, note)` | DELETE | `/v2/payment/cancel/{id}` | Cancel a card payment |
-| `refundPayment(id, url, note)` | DELETE | `/v2/payment/refund/{id}` | Refund a card payment |
-| `createEbarimt(req)` | POST | `/v2/ebarimt_v3/create` | Create electronic tax receipt |
-| `cancelEbarimt(id)` | DELETE | `/v2/ebarimt_v3/{id}` | Cancel electronic tax receipt |
+| Method | Description | Returns |
+|---|---|---|
+| `getToken()` | Authenticate and get token pair | `TokenResponse` |
+| `refreshToken()` | Refresh access token | `TokenResponse` |
+| `createInvoice(req)` | Create invoice with full options | `InvoiceResponse` |
+| `createSimpleInvoice(req)` | Create invoice with minimal fields | `InvoiceResponse` |
+| `cancelInvoice(id)` | Cancel an invoice | `void` |
+| `getPayment(id)` | Get payment details | `PaymentDetail` |
+| `checkPayment(req)` | Check payment status | `PaymentCheckResponse` |
+| `listPayments(req)` | List payments | `PaymentListResponse` |
+| `cancelPayment(id, url, note)` | Cancel a card payment | `void` |
+| `refundPayment(id, url, note)` | Refund a card payment | `void` |
+| `createEbarimt(req)` | Create electronic tax receipt | `EbarimtResponse` |
+| `cancelEbarimt(id)` | Cancel electronic tax receipt | `EbarimtResponse` |
+
+## Links
+
+- **Maven Central**: [io.github.qpay-sdk:qpay-java](https://central.sonatype.com/artifact/io.github.qpay-sdk/qpay-java)
+- **GitHub**: [github.com/qpay-sdk/qpay-java](https://github.com/qpay-sdk/qpay-java)

@@ -1,9 +1,9 @@
 # Dart / Flutter SDK
 
-A Dart/Flutter client library for the QPay V2 API with automatic token management, strong typing, and comprehensive error handling. Works with Dart CLI apps and Flutter.
+A Dart/Flutter client library for the QPay V2 API with automatic token management, strong typing, and comprehensive error handling. Works with both server-side Dart CLI apps and Flutter mobile/web apps.
 
-- **pub.dev**: [qpay](https://pub.dev/packages/qpay)
-- **GitHub**: [github.com/qpay-sdk/qpay-dart](https://github.com/qpay-sdk/qpay-dart)
+[![pub.dev](https://img.shields.io/pub/v/qpay)](https://pub.dev/packages/qpay)
+[![GitHub](https://img.shields.io/github/v/tag/qpay-sdk/qpay-dart?label=GitHub)](https://github.com/qpay-sdk/qpay-dart)
 
 ## Installation
 
@@ -24,6 +24,47 @@ Or add it manually to your `pubspec.yaml`:
 ```yaml
 dependencies:
   qpay: ^1.0.0
+```
+
+## Configuration
+
+### Direct Configuration
+
+```dart
+import 'package:qpay/qpay.dart';
+
+const config = QPayConfig(
+  baseUrl: 'https://merchant.qpay.mn',
+  username: 'YOUR_USERNAME',
+  password: 'YOUR_PASSWORD',
+  invoiceCode: 'YOUR_INVOICE_CODE',
+  callbackUrl: 'https://yourapp.com/callback',
+);
+```
+
+### From Environment Variables
+
+For server-side Dart applications:
+
+```dart
+final config = QPayConfig.fromEnvironment();
+```
+
+| Variable | Description |
+|---|---|
+| `QPAY_BASE_URL` | QPay API base URL |
+| `QPAY_USERNAME` | QPay merchant username |
+| `QPAY_PASSWORD` | QPay merchant password |
+| `QPAY_INVOICE_CODE` | Default invoice code |
+| `QPAY_CALLBACK_URL` | Payment callback URL |
+
+### Custom HTTP Client
+
+```dart
+import 'package:http/http.dart' as http;
+
+final httpClient = http.Client();
+final client = QPayClient(config, httpClient: httpClient);
 ```
 
 ## Quick Start
@@ -53,6 +94,10 @@ void main() async {
     print('Invoice ID: ${invoice.invoiceId}');
     print('QR Image: ${invoice.qrImage}');
     print('Short URL: ${invoice.qPayShortUrl}');
+
+    for (final url in invoice.urls) {
+      print('  ${url.name}: ${url.link}');
+    }
   } on QPayException catch (e) {
     print('QPay error: ${e.code} - ${e.message}');
   } finally {
@@ -61,44 +106,12 @@ void main() async {
 }
 ```
 
-## Configuration
-
-### Direct Configuration
-
-```dart
-const config = QPayConfig(
-  baseUrl: 'https://merchant.qpay.mn',
-  username: 'YOUR_USERNAME',
-  password: 'YOUR_PASSWORD',
-  invoiceCode: 'YOUR_INVOICE_CODE',
-  callbackUrl: 'https://yourapp.com/callback',
-);
-```
-
-### From Environment Variables
-
-For server-side Dart applications:
-
-```dart
-final config = QPayConfig.fromEnvironment();
-```
-
-| Variable | Description |
-|---|---|
-| `QPAY_BASE_URL` | QPay API base URL |
-| `QPAY_USERNAME` | QPay merchant username |
-| `QPAY_PASSWORD` | QPay merchant password |
-| `QPAY_INVOICE_CODE` | Default invoice code |
-| `QPAY_CALLBACK_URL` | Payment callback URL |
-
-## Usage
-
-### Create Simple Invoice
+## Create Invoice
 
 ```dart
 final invoice = await client.createSimpleInvoice(CreateSimpleInvoiceRequest(
   invoiceCode: 'YOUR_INVOICE_CODE',
-  senderInvoiceNo: 'INV-001',
+  senderInvoiceNo: 'INV-002',
   invoiceReceiverCode: 'terminal',
   invoiceDescription: 'Coffee x2',
   amount: 12000,
@@ -106,36 +119,40 @@ final invoice = await client.createSimpleInvoice(CreateSimpleInvoiceRequest(
 ));
 
 print('Invoice ID: ${invoice.invoiceId}');
-
-for (final url in invoice.urls) {
-  print('${url.name}: ${url.link}');
-}
 ```
 
-### Check Payment
+Cancel an invoice:
+
+```dart
+await client.cancelInvoice('invoice-id-here');
+```
+
+## Check Payment
 
 ```dart
 final result = await client.checkPayment(PaymentCheckRequest(
   objectType: 'INVOICE',
-  objectId: 'invoice-id',
+  objectId: invoice.invoiceId,
 ));
 
 if (result.count > 0) {
-  print('Paid amount: ${result.paidAmount}');
+  print('Payment received! Paid: ${result.paidAmount} MNT');
   for (final row in result.rows) {
-    print('Payment ${row.paymentId}: ${row.paymentStatus}');
+    print('  ${row.paymentId}: ${row.paymentStatus} (${row.paymentAmount} ${row.paymentCurrency})');
   }
+} else {
+  print('No payment yet');
 }
 ```
 
-### List Payments
+## List Payments
 
 ```dart
 final payments = await client.listPayments(PaymentListRequest(
   objectType: 'INVOICE',
-  objectId: 'invoice-id',
-  startDate: '2025-01-01',
-  endDate: '2025-12-31',
+  objectId: invoice.invoiceId,
+  startDate: '2024-01-01',
+  endDate: '2024-12-31',
   offset: Offset(pageNumber: 1, pageLimit: 20),
 ));
 
@@ -145,19 +162,41 @@ for (final item in payments.rows) {
 }
 ```
 
-### Create Ebarimt
+Get details for a single payment:
 
 ```dart
-final ebarimt = await client.createEbarimt(CreateEbarimtRequest(
-  paymentId: 'payment-id',
-  ebarimtReceiverType: 'INDIVIDUAL',
-  ebarimtReceiver: '99001122',
-  districtCode: 'UB01',
-));
+final detail = await client.getPayment('payment-id-here');
+print('Payment ${detail.paymentId}: ${detail.paymentStatus}');
+```
 
-print('Ebarimt ID: ${ebarimt.id}');
-print('Lottery: ${ebarimt.ebarimtLottery}');
-print('QR Data: ${ebarimt.ebarimtQrData}');
+## Webhook Handling
+
+QPay sends a POST request to your `callbackUrl` when a payment completes. In a Dart server (e.g., using `shelf`):
+
+```dart
+import 'dart:convert';
+import 'package:shelf/shelf.dart';
+import 'package:qpay/qpay.dart';
+
+final config = QPayConfig.fromEnvironment();
+final qpayClient = QPayClient(config);
+
+Future<Response> callbackHandler(Request request) async {
+  final body = jsonDecode(await request.readAsString());
+  final paymentId = body['payment_id'] as String;
+
+  final result = await qpayClient.checkPayment(PaymentCheckRequest(
+    objectType: 'INVOICE',
+    objectId: paymentId,
+  ));
+
+  if (result.count > 0) {
+    // Payment verified -- update your order status
+    print('Payment confirmed: $paymentId (${result.paidAmount} MNT)');
+  }
+
+  return Response.ok(jsonEncode({'status': 'ok'}));
+}
 ```
 
 ## Error Handling
@@ -166,8 +205,8 @@ print('QR Data: ${ebarimt.ebarimtQrData}');
 try {
   await client.cancelInvoice('nonexistent-id');
 } on QPayException catch (e) {
-  print('Status: ${e.statusCode}');
-  print('Code: ${e.code}');
+  print('Status: ${e.statusCode}');   // e.g., 404
+  print('Code: ${e.code}');           // e.g., "INVOICE_NOTFOUND"
   print('Message: ${e.message}');
   print('Body: ${e.rawBody}');
 
@@ -175,6 +214,8 @@ try {
     print('Invoice does not exist');
   } else if (e.code == QPayException.invoicePaid) {
     print('Invoice has already been paid');
+  } else if (e.code == QPayException.authenticationFailed) {
+    print('Authentication failed');
   }
 }
 ```
@@ -211,7 +252,7 @@ Future<void> openBankApp(Deeplink deeplink) async {
 ```dart
 Future<bool> waitForPayment(QPayClient client, String invoiceId) async {
   for (var i = 0; i < 60; i++) {
-    await Future.delayed(Duration(seconds: 5));
+    await Future.delayed(const Duration(seconds: 5));
 
     final result = await client.checkPayment(PaymentCheckRequest(
       objectType: 'INVOICE',
@@ -228,19 +269,24 @@ Future<bool> waitForPayment(QPayClient client, String invoiceId) async {
 
 ## API Reference
 
-| Method | Description |
-|---|---|
-| `getToken()` | Authenticate and get a new token pair |
-| `refreshToken()` | Refresh the current access token |
-| `createInvoice(request)` | Create a full invoice with all options |
-| `createSimpleInvoice(request)` | Create a simple invoice with minimal fields |
-| `createEbarimtInvoice(request)` | Create an invoice with ebarimt (tax) info |
-| `cancelInvoice(invoiceId)` | Cancel an existing invoice |
-| `getPayment(paymentId)` | Get payment details by ID |
-| `checkPayment(request)` | Check if a payment has been made |
-| `listPayments(request)` | List payments with filters and pagination |
-| `cancelPayment(paymentId, request)` | Cancel a card payment |
-| `refundPayment(paymentId, request)` | Refund a card payment |
-| `createEbarimt(request)` | Create an electronic tax receipt |
-| `cancelEbarimt(paymentId)` | Cancel an electronic tax receipt |
-| `close()` | Close the underlying HTTP client |
+| Method | Description | Returns |
+|---|---|---|
+| `getToken()` | Authenticate and get a new token pair | `Future<TokenResponse>` |
+| `refreshToken()` | Refresh the current access token | `Future<TokenResponse>` |
+| `createInvoice(request)` | Create a full invoice with all options | `Future<InvoiceResponse>` |
+| `createSimpleInvoice(request)` | Create a simple invoice | `Future<InvoiceResponse>` |
+| `createEbarimtInvoice(request)` | Create an invoice with ebarimt | `Future<InvoiceResponse>` |
+| `cancelInvoice(invoiceId)` | Cancel an existing invoice | `Future<void>` |
+| `getPayment(paymentId)` | Get payment details by ID | `Future<PaymentDetail>` |
+| `checkPayment(request)` | Check if a payment has been made | `Future<PaymentCheckResponse>` |
+| `listPayments(request)` | List payments with filters | `Future<PaymentListResponse>` |
+| `cancelPayment(paymentId, request)` | Cancel a card payment | `Future<void>` |
+| `refundPayment(paymentId, request)` | Refund a card payment | `Future<void>` |
+| `createEbarimt(request)` | Create an electronic tax receipt | `Future<EbarimtResponse>` |
+| `cancelEbarimt(paymentId)` | Cancel an electronic tax receipt | `Future<EbarimtResponse>` |
+| `close()` | Close the underlying HTTP client | `void` |
+
+## Links
+
+- **pub.dev**: [pub.dev/packages/qpay](https://pub.dev/packages/qpay)
+- **GitHub**: [github.com/qpay-sdk/qpay-dart](https://github.com/qpay-sdk/qpay-dart)
