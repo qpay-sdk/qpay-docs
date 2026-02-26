@@ -22,6 +22,9 @@ export default {
   'api-reference': {
     title: 'API Reference',
   },
+  examples: {
+    title: 'Examples',
+  },
   'error-codes': {
     title: 'Error Codes',
   },

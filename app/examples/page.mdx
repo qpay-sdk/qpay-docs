@@ -1,0 +1,614 @@
+# Examples
+
+Complete, copy-paste-ready payment flow examples. Each example shows the full cycle: install dependencies, configure, create an invoice, display the QR code, and handle the webhook callback.
+
+> [!TIP]
+> These examples use the **sandbox** environment (`merchant-sandbox.qpay.mn`). Switch to `merchant.qpay.mn` for production.
+
+---
+
+## Express.js (Node.js)
+
+A minimal Express server with QPay payment flow — create invoice, show QR, handle webhook.
+
+### Setup
+
+```bash
+mkdir qpay-express-demo && cd qpay-express-demo
+npm init -y
+npm install express qpay-js @qpay-sdk/express
+```
+
+### .env
+
+```bash
+QPAY_BASE_URL=https://merchant-sandbox.qpay.mn
+QPAY_USERNAME=your_username
+QPAY_PASSWORD=your_password
+QPAY_INVOICE_CODE=your_invoice_code
+QPAY_CALLBACK_URL=https://your-domain.com/qpay/webhook
+PORT=3000
+```
+
+### server.js
+
+```javascript
+import 'dotenv/config';
+import express from 'express';
+import { qpayMiddleware, qpayWebhook } from '@qpay-sdk/express';
+
+const app = express();
+app.use(express.json());
+app.use(qpayMiddleware());
+
+// 1. Create invoice and return QR code
+app.post('/pay', async (req, res) => {
+  const { orderId, amount } = req.body;
+
+  const invoice = await req.qpay.createSimpleInvoice({
+    invoiceCode: process.env.QPAY_INVOICE_CODE,
+    senderInvoiceNo: `ORDER-${orderId}`,
+    amount,
+    callbackUrl: process.env.QPAY_CALLBACK_URL,
+  });
+
+  res.json({
+    invoiceId: invoice.invoiceId,
+    qrImage: invoice.qrImage,       // Base64 PNG
+    qrText: invoice.qrText,         // QR string
+    urls: invoice.urls,             // Bank deep links
+  });
+});
+
+// 2. Check payment status
+app.get('/pay/:invoiceId/status', async (req, res) => {
+  const result = await req.qpay.checkPayment({
+    objectType: 'INVOICE',
+    objectId: req.params.invoiceId,
+  });
+
+  const paid = result.rows && result.rows.length > 0;
+  res.json({ paid, payments: result.rows || [] });
+});
+
+// 3. Webhook — QPay calls this when payment completes
+app.post('/qpay/webhook', qpayWebhook({
+  onPaymentReceived: async (invoiceId, result) => {
+    console.log(`Payment confirmed: ${invoiceId}`);
+    // TODO: Update order status in your database
+  },
+  onPaymentFailed: async (invoiceId, reason) => {
+    console.log(`Payment failed: ${invoiceId} — ${reason}`);
+  },
+}));
+
+app.listen(process.env.PORT || 3000, () => {
+  console.log('Server running on :3000');
+});
+```
+
+### Test it
+
+```bash
+# Create an invoice
+curl -X POST http://localhost:3000/pay \
+  -H 'Content-Type: application/json' \
+  -d '{"orderId": "001", "amount": 100}'
+
+# Check payment status
+curl http://localhost:3000/pay/INVOICE_ID/status
+```
+
+---
+
+## Go
+
+A standalone Go HTTP server with QPay payment flow.
+
+### Setup
+
+```bash
+mkdir qpay-go-demo && cd qpay-go-demo
+go mod init qpay-go-demo
+go get github.com/qpay-sdk/qpay-go
+```
+
+### main.go
+
+```go
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"strings"
+
+	qpay "github.com/qpay-sdk/qpay-go"
+)
+
+var client *qpay.Client
+
+func main() {
+	// Initialize client from environment variables
+	client = qpay.NewClientFromEnv()
+
+	http.HandleFunc("POST /pay", handlePay)
+	http.HandleFunc("GET /pay/{invoiceId}/status", handleStatus)
+	http.HandleFunc("POST /qpay/webhook", handleWebhook)
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Printf("Server running on :%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
+}
+
+func handlePay(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		OrderID string  `json:"orderId"`
+		Amount  float64 `json:"amount"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
+
+	invoice, err := client.CreateSimpleInvoice(qpay.CreateSimpleInvoiceRequest{
+		InvoiceCode:     os.Getenv("QPAY_INVOICE_CODE"),
+		SenderInvoiceNo: fmt.Sprintf("ORDER-%s", req.OrderID),
+		Amount:          req.Amount,
+		CallbackURL:     os.Getenv("QPAY_CALLBACK_URL"),
+	})
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"invoiceId": invoice.InvoiceID,
+		"qrImage":   invoice.QRImage,
+		"qrText":    invoice.QRText,
+		"urls":      invoice.URLs,
+	})
+}
+
+func handleStatus(w http.ResponseWriter, r *http.Request) {
+	invoiceId := r.PathValue("invoiceId")
+
+	result, err := client.CheckPayment(qpay.PaymentCheckRequest{
+		ObjectType: "INVOICE",
+		ObjectID:   invoiceId,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	paid := len(result.Rows) > 0
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"paid":     paid,
+		"payments": result.Rows,
+	})
+}
+
+func handleWebhook(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		InvoiceID string `json:"invoice_id"`
+	}
+	json.NewDecoder(r.Body).Decode(&body)
+
+	result, err := client.CheckPayment(qpay.PaymentCheckRequest{
+		ObjectType: "INVOICE",
+		ObjectID:   body.InvoiceID,
+	})
+	if err != nil {
+		log.Printf("Webhook error: %v", err)
+		http.Error(w, "error", 500)
+		return
+	}
+
+	if len(result.Rows) > 0 {
+		log.Printf("Payment confirmed: %s", body.InvoiceID)
+		// TODO: Update order status in your database
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// suppress unused import warning
+var _ = strings.TrimSpace
+```
+
+---
+
+## Python (FastAPI)
+
+An async FastAPI server with QPay integration.
+
+### Setup
+
+```bash
+mkdir qpay-fastapi-demo && cd qpay-fastapi-demo
+pip install fastapi uvicorn fastapi-qpay
+```
+
+### .env
+
+```bash
+QPAY_BASE_URL=https://merchant-sandbox.qpay.mn
+QPAY_USERNAME=your_username
+QPAY_PASSWORD=your_password
+QPAY_INVOICE_CODE=your_invoice_code
+QPAY_CALLBACK_URL=https://your-domain.com/qpay/webhook
+```
+
+### main.py
+
+```python
+from fastapi import FastAPI, Depends
+from pydantic import BaseModel
+from fastapi_qpay import get_qpay_client, qpay_router
+
+app = FastAPI()
+
+# Mount pre-built QPay router (webhook, invoice, status endpoints)
+app.include_router(qpay_router, prefix="/qpay")
+
+
+# Custom payment endpoint
+class PayRequest(BaseModel):
+    order_id: str
+    amount: float
+
+
+@app.post("/pay")
+async def create_payment(req: PayRequest, qpay=Depends(get_qpay_client)):
+    invoice = await qpay.create_simple_invoice(
+        invoice_code=qpay.config.invoice_code,
+        sender_invoice_no=f"ORDER-{req.order_id}",
+        amount=req.amount,
+        callback_url=qpay.config.callback_url,
+    )
+
+    return {
+        "invoice_id": invoice.invoice_id,
+        "qr_image": invoice.qr_image,
+        "qr_text": invoice.qr_text,
+        "urls": invoice.urls,
+    }
+
+
+@app.get("/pay/{invoice_id}/status")
+async def check_status(invoice_id: str, qpay=Depends(get_qpay_client)):
+    result = await qpay.check_payment(
+        object_type="INVOICE",
+        object_id=invoice_id,
+    )
+
+    paid = bool(result.rows)
+    return {"paid": paid, "payments": result.rows}
+```
+
+### Run
+
+```bash
+uvicorn main:app --reload --port 8000
+# Open http://localhost:8000/docs for interactive API docs
+```
+
+---
+
+## Laravel (PHP)
+
+A Laravel application with QPay payment routes, webhook handling, and Blade views.
+
+### Setup
+
+```bash
+laravel new qpay-laravel-demo
+cd qpay-laravel-demo
+composer require qpay-sdk/laravel
+php artisan qpay:install
+```
+
+### .env
+
+```bash
+QPAY_BASE_URL=https://merchant-sandbox.qpay.mn
+QPAY_USERNAME=your_username
+QPAY_PASSWORD=your_password
+QPAY_INVOICE_CODE=your_invoice_code
+QPAY_CALLBACK_URL=https://your-domain.com/qpay/webhook
+```
+
+### routes/web.php
+
+```php
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use QPay\Laravel\Facades\QPay;
+
+// Create invoice
+Route::post('/pay', function (Request $request) {
+    $invoice = QPay::createSimpleInvoice([
+        'invoice_code' => config('qpay.invoice_code'),
+        'sender_invoice_no' => 'ORDER-' . $request->order_id,
+        'amount' => $request->amount,
+        'callback_url' => config('qpay.callback_url'),
+    ]);
+
+    return response()->json([
+        'invoice_id' => $invoice['invoice_id'],
+        'qr_image' => $invoice['qr_image'],
+        'qr_text' => $invoice['qr_text'],
+        'urls' => $invoice['urls'],
+    ]);
+});
+
+// Check payment
+Route::get('/pay/{invoiceId}/status', function ($invoiceId) {
+    $result = QPay::checkPayment([
+        'object_type' => 'INVOICE',
+        'object_id' => $invoiceId,
+    ]);
+
+    $paid = !empty($result['rows']);
+    return response()->json([
+        'paid' => $paid,
+        'payments' => $result['rows'] ?? [],
+    ]);
+});
+```
+
+### routes/api.php
+
+```php
+use QPay\Laravel\Facades\QPay;
+
+// Webhook — exclude from CSRF verification
+Route::post('/qpay/webhook', function (Request $request) {
+    $invoiceId = $request->input('invoice_id');
+
+    $result = QPay::checkPayment([
+        'object_type' => 'INVOICE',
+        'object_id' => $invoiceId,
+    ]);
+
+    if (!empty($result['rows'])) {
+        // Payment confirmed — update order
+        logger()->info("Payment confirmed: {$invoiceId}");
+    }
+
+    return response()->json(['status' => 'ok']);
+})->withoutMiddleware(['csrf']);
+```
+
+### Blade View (optional)
+
+```blade
+{{-- resources/views/payment.blade.php --}}
+<div class="payment-qr">
+    <h2>Scan to Pay</h2>
+    <x-qpay-qr :invoice="$invoice" />
+    <p>Amount: ₮{{ number_format($invoice['amount']) }}</p>
+</div>
+```
+
+---
+
+## Django
+
+A Django project with QPay payment views and webhook handling.
+
+### Setup
+
+```bash
+django-admin startproject qpay_demo
+cd qpay_demo
+pip install django-qpay
+```
+
+### settings.py
+
+```python
+INSTALLED_APPS = [
+    # ...
+    "django_qpay",
+]
+
+QPAY = {
+    "BASE_URL": os.environ.get("QPAY_BASE_URL", "https://merchant-sandbox.qpay.mn"),
+    "USERNAME": os.environ["QPAY_USERNAME"],
+    "PASSWORD": os.environ["QPAY_PASSWORD"],
+    "INVOICE_CODE": os.environ["QPAY_INVOICE_CODE"],
+    "CALLBACK_URL": os.environ["QPAY_CALLBACK_URL"],
+}
+```
+
+### views.py
+
+```python
+import json
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST, require_GET
+from django_qpay import get_client
+
+@require_POST
+def create_payment(request):
+    data = json.loads(request.body)
+    client = get_client()
+
+    invoice = client.create_simple_invoice(
+        invoice_code=client.config.invoice_code,
+        sender_invoice_no=f"ORDER-{data['order_id']}",
+        amount=data["amount"],
+        callback_url=client.config.callback_url,
+    )
+
+    return JsonResponse({
+        "invoice_id": invoice.invoice_id,
+        "qr_image": invoice.qr_image,
+        "qr_text": invoice.qr_text,
+    })
+
+@require_GET
+def check_status(request, invoice_id):
+    client = get_client()
+    result = client.check_payment(
+        object_type="INVOICE",
+        object_id=invoice_id,
+    )
+
+    paid = bool(result.rows)
+    return JsonResponse({"paid": paid})
+
+@csrf_exempt
+@require_POST
+def webhook(request):
+    data = json.loads(request.body)
+    invoice_id = data.get("invoice_id")
+
+    client = get_client()
+    result = client.check_payment(
+        object_type="INVOICE",
+        object_id=invoice_id,
+    )
+
+    if result.rows:
+        # Payment confirmed
+        print(f"Payment confirmed: {invoice_id}")
+
+    return JsonResponse({"status": "ok"})
+```
+
+### urls.py
+
+```python
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path("pay/", views.create_payment),
+    path("pay/<str:invoice_id>/status/", views.check_status),
+    path("qpay/webhook/", views.webhook),
+]
+```
+
+---
+
+## Frontend: QR Code Display
+
+All SDKs return a base64-encoded QR image. Here's how to display it on the client side.
+
+### HTML / Vanilla JS
+
+```html
+<div id="payment">
+  <img id="qr" alt="QPay QR Code" />
+  <p id="status">Waiting for payment...</p>
+</div>
+
+<script>
+async function createPayment() {
+  const res = await fetch('/pay', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderId: '001', amount: 1000 }),
+  });
+  const { invoiceId, qrImage } = await res.json();
+
+  // Display QR code
+  document.getElementById('qr').src = `data:image/png;base64,${qrImage}`;
+
+  // Poll for payment status
+  const interval = setInterval(async () => {
+    const check = await fetch(`/pay/${invoiceId}/status`);
+    const { paid } = await check.json();
+    if (paid) {
+      clearInterval(interval);
+      document.getElementById('status').textContent = 'Payment confirmed!';
+    }
+  }, 3000);
+}
+
+createPayment();
+</script>
+```
+
+### React
+
+```tsx
+import { useState, useEffect } from 'react';
+
+function PaymentPage({ orderId, amount }: { orderId: string; amount: number }) {
+  const [invoice, setInvoice] = useState<any>(null);
+  const [paid, setPaid] = useState(false);
+
+  useEffect(() => {
+    fetch('/pay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId, amount }),
+    })
+      .then(res => res.json())
+      .then(setInvoice);
+  }, [orderId, amount]);
+
+  // Poll for payment status
+  useEffect(() => {
+    if (!invoice) return;
+    const interval = setInterval(async () => {
+      const res = await fetch(`/pay/${invoice.invoiceId}/status`);
+      const { paid } = await res.json();
+      if (paid) {
+        clearInterval(interval);
+        setPaid(true);
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [invoice]);
+
+  if (!invoice) return <p>Loading...</p>;
+  if (paid) return <p>Payment confirmed!</p>;
+
+  return (
+    <div>
+      <img
+        src={`data:image/png;base64,${invoice.qrImage}`}
+        alt="QPay QR"
+        width={300}
+      />
+      <p>Scan the QR code to pay ₮{amount.toLocaleString()}</p>
+      <p>Waiting for payment...</p>
+    </div>
+  );
+}
+```
+
+---
+
+## Payment Flow Summary
+
+Every example above follows the same three-step flow:
+
+```
+1. Create Invoice        POST /pay → { invoiceId, qrImage, urls }
+2. Customer Pays         Scans QR or opens bank deep link
+3. Confirm Payment       QPay → POST /webhook → verify via checkPayment
+```
+
+The webhook is the **recommended** way to confirm payments. Client-side polling (shown in the frontend examples) is a convenience for updating the UI — always verify on the server side via the webhook.
+
+---
+
+## Next Steps
+
+- [Getting Started](/getting-started) — Full setup guide with environment configuration
+- [SDK Reference](/sdks) — Detailed API docs for each language
+- [Framework Packages](/frameworks) — Laravel, Django, Express, and more
+- [API Reference](/api-reference) — Raw QPay V2 endpoint documentation
