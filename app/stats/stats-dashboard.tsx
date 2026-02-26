@@ -364,6 +364,60 @@ const statBoxStyle: React.CSSProperties = {
   minWidth: '120px',
 }
 
+// Weekly download trend chart for npm packages
+function DownloadTrend({ data, label }: { data: { week: string; downloads: number }[]; label: string }) {
+  if (data.length === 0) return null
+  const max = Math.max(...data.map(d => d.downloads), 1)
+  const barWidth = 100 / data.length
+  return (
+    <div style={{ ...cardStyle, marginBottom: '0.75rem' }}>
+      <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem' }}>{label}</div>
+      <svg viewBox="0 0 100 32" style={{ width: '100%', height: '48px' }} preserveAspectRatio="none">
+        {data.map((d, i) => {
+          const h = (d.downloads / max) * 28
+          return (
+            <rect
+              key={i}
+              x={i * barWidth + barWidth * 0.1}
+              y={30 - h}
+              width={barWidth * 0.8}
+              height={h}
+              rx={0.8}
+              fill="color-mix(in srgb, currentColor 40%, transparent)"
+            />
+          )
+        })}
+      </svg>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', opacity: 0.5, marginTop: '0.125rem' }}>
+        <span>{data[0]?.week}</span>
+        <span>{data[data.length - 1]?.week}</span>
+      </div>
+    </div>
+  )
+}
+
+interface TrendData {
+  label: string
+  weeks: { week: string; downloads: number }[]
+}
+
+function TrendSection({ trends }: { trends: TrendData[] }) {
+  if (trends.length === 0) return null
+  return (
+    <div style={{ marginBottom: '2rem' }}>
+      <h2>Download Trends</h2>
+      <p style={{ opacity: 0.7, fontSize: '0.875rem', marginBottom: '1rem' }}>
+        Weekly downloads over the last 4 weeks from npm, PyPI, and other registries with public trend APIs.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '0.75rem' }}>
+        {trends.map((t) => (
+          <DownloadTrend key={t.label} data={t.weeks} label={t.label} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function SummaryCards({ totals }: { totals: AllStats['totals'] }) {
   const items = [
     { label: 'Repositories', value: totals.repos, icon: '/' },
@@ -493,6 +547,7 @@ export function StatsDashboard() {
     loading: true,
     error: null,
   })
+  const [trends, setTrends] = useState<TrendData[]>([])
 
   useEffect(() => {
     async function fetchAll() {
@@ -564,6 +619,81 @@ export function StatsDashboard() {
     }
 
     fetchAll()
+
+    // Fetch weekly download trends (non-blocking)
+    async function fetchTrends() {
+      const npmPackages = [
+        { name: 'qpay-js', label: 'qpay-js (npm)' },
+        { name: '@qpay-sdk/express', label: '@qpay-sdk/express (npm)' },
+        { name: '@qpay-sdk/nestjs', label: '@qpay-sdk/nestjs (npm)' },
+      ]
+      const pypiPackages = [
+        { name: 'qpay-py', label: 'qpay-py (PyPI)' },
+        { name: 'django-qpay', label: 'django-qpay (PyPI)' },
+        { name: 'fastapi-qpay', label: 'fastapi-qpay (PyPI)' },
+      ]
+
+      const results: TrendData[] = []
+
+      // npm: range API returns daily downloads, we aggregate to weeks
+      const npmResults = await Promise.allSettled(
+        npmPackages.map(async (pkg) => {
+          const res = await fetch(
+            `https://api.npmjs.org/downloads/range/last-month/${pkg.name}`
+          )
+          const d = await res.json()
+          if (!d.downloads) return null
+          // Aggregate daily into weekly
+          const weeks: { week: string; downloads: number }[] = []
+          for (let i = 0; i < d.downloads.length; i += 7) {
+            const slice = d.downloads.slice(i, i + 7)
+            const total = slice.reduce((s: number, x: any) => s + (x.downloads || 0), 0)
+            const weekLabel = slice[0]?.day?.slice(5) ?? ''
+            weeks.push({ week: weekLabel, downloads: total })
+          }
+          return { label: pkg.label, weeks }
+        })
+      )
+      for (const r of npmResults) {
+        if (r.status === 'fulfilled' && r.value) results.push(r.value)
+      }
+
+      // PyPI: overall API returns daily for last 180 days
+      const pypiResults = await Promise.allSettled(
+        pypiPackages.map(async (pkg) => {
+          const res = await fetch(
+            `https://pypistats.org/api/packages/${pkg.name}/overall?mirrors=true`
+          )
+          const d = await res.json()
+          if (!d.data) return null
+          // Get last 28 days, group by week
+          const sorted = d.data
+            .filter((x: any) => x.category === 'without_mirrors' || x.category === 'with_mirrors')
+            .sort((a: any, b: any) => a.date.localeCompare(b.date))
+          // Deduplicate by date, summing categories
+          const byDate: Record<string, number> = {}
+          for (const row of sorted) {
+            byDate[row.date] = (byDate[row.date] || 0) + row.downloads
+          }
+          const entries = Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b)).slice(-28)
+          const weeks: { week: string; downloads: number }[] = []
+          for (let i = 0; i < entries.length; i += 7) {
+            const slice = entries.slice(i, i + 7)
+            const total = slice.reduce((s, [, dl]) => s + dl, 0)
+            const weekLabel = slice[0]?.[0]?.slice(5) ?? ''
+            weeks.push({ week: weekLabel, downloads: total })
+          }
+          return { label: pkg.label, weeks }
+        })
+      )
+      for (const r of pypiResults) {
+        if (r.status === 'fulfilled' && r.value) results.push(r.value)
+      }
+
+      setTrends(results)
+    }
+
+    fetchTrends()
   }, [])
 
   if (stats.loading) {
@@ -614,6 +744,8 @@ export function StatsDashboard() {
       <RepoTable repos={frameworkRepos} title="Framework Packages" />
       <RepoTable repos={pluginRepos} title="CMS Plugins" />
       {otherRepos.length > 0 && <RepoTable repos={otherRepos} title="Other" />}
+
+      <TrendSection trends={trends} />
 
       <h2>Package Registry Stats</h2>
       <p style={{ opacity: 0.7, fontSize: '0.875rem', marginBottom: '1rem' }}>

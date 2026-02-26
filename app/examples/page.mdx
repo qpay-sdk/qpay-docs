@@ -592,6 +592,192 @@ function PaymentPage({ orderId, amount }: { orderId: string; amount: number }) {
 
 ---
 
+## Docker Compose (Full-Stack Demo)
+
+A complete Express + QPay stack with Docker Compose — API server, webhook handler, and a simple frontend. One command to run everything.
+
+### Project Structure
+
+```
+qpay-docker-demo/
+├── docker-compose.yml
+├── .env
+├── api/
+│   ├── Dockerfile
+│   ├── package.json
+│   └── server.js
+└── web/
+    ├── Dockerfile
+    └── index.html
+```
+
+### docker-compose.yml
+
+```yaml
+services:
+  api:
+    build: ./api
+    ports:
+      - "3000:3000"
+    env_file: .env
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+```
+
+### .env
+
+```bash
+QPAY_BASE_URL=https://merchant-sandbox.qpay.mn
+QPAY_USERNAME=your_username
+QPAY_PASSWORD=your_password
+QPAY_INVOICE_CODE=your_invoice_code
+QPAY_CALLBACK_URL=https://your-domain.com/qpay/webhook
+PORT=3000
+```
+
+### api/Dockerfile
+
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY package.json ./
+RUN npm install --production
+COPY server.js ./
+EXPOSE 3000
+CMD ["node", "server.js"]
+```
+
+### api/package.json
+
+```json
+{
+  "name": "qpay-api",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "express": "^4.21.0",
+    "qpay-js": "^1.0.0",
+    "@qpay-sdk/express": "^1.0.0"
+  }
+}
+```
+
+### api/server.js
+
+```javascript
+import express from 'express';
+import { qpayMiddleware, qpayWebhook } from '@qpay-sdk/express';
+
+const app = express();
+app.use(express.json());
+app.use(qpayMiddleware());
+
+// CORS for web container
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  next();
+});
+
+app.post('/pay', async (req, res) => {
+  const invoice = await req.qpay.createSimpleInvoice({
+    invoiceCode: process.env.QPAY_INVOICE_CODE,
+    senderInvoiceNo: `ORDER-${Date.now()}`,
+    amount: req.body.amount || 100,
+    callbackUrl: process.env.QPAY_CALLBACK_URL,
+  });
+  res.json({
+    invoiceId: invoice.invoiceId,
+    qrImage: invoice.qrImage,
+    urls: invoice.urls,
+  });
+});
+
+app.get('/pay/:id/status', async (req, res) => {
+  const result = await req.qpay.checkPayment({
+    objectType: 'INVOICE',
+    objectId: req.params.id,
+  });
+  res.json({ paid: (result.rows?.length || 0) > 0 });
+});
+
+app.post('/qpay/webhook', qpayWebhook({
+  onPaymentReceived: (id) => console.log(`Paid: ${id}`),
+}));
+
+app.listen(3000, () => console.log('API on :3000'));
+```
+
+### web/Dockerfile
+
+```dockerfile
+FROM nginx:alpine
+COPY index.html /usr/share/nginx/html/index.html
+```
+
+### web/index.html
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>QPay Demo</title>
+  <style>
+    body { font-family: system-ui; max-width: 480px; margin: 2rem auto; text-align: center; }
+    img { border: 1px solid #ddd; border-radius: 8px; margin: 1rem 0; }
+    button { padding: 0.75rem 2rem; font-size: 1rem; cursor: pointer; border-radius: 6px; border: none; background: #00B462; color: #fff; }
+    #status { font-weight: 600; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>QPay Payment Demo</h1>
+  <button onclick="pay()">Pay ₮100</button>
+  <div id="qr"></div>
+  <div id="status"></div>
+
+  <script>
+    async function pay() {
+      const res = await fetch('http://localhost:3000/pay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: 100 }),
+      });
+      const { invoiceId, qrImage } = await res.json();
+      document.getElementById('qr').innerHTML =
+        `<img src="data:image/png;base64,${qrImage}" width="300" />`;
+      document.getElementById('status').textContent = 'Waiting for payment...';
+
+      const poll = setInterval(async () => {
+        const s = await fetch(`http://localhost:3000/pay/${invoiceId}/status`);
+        const { paid } = await s.json();
+        if (paid) {
+          clearInterval(poll);
+          document.getElementById('status').textContent = 'Payment confirmed!';
+        }
+      }, 3000);
+    }
+  </script>
+</body>
+</html>
+```
+
+### Run
+
+```bash
+docker compose up --build
+# Web UI:  http://localhost:8080
+# API:     http://localhost:3000
+```
+
+---
+
 ## Payment Flow Summary
 
 Every example above follows the same three-step flow:
