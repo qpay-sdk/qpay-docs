@@ -8,8 +8,8 @@ const ENDPOINTS = [
     label: 'Authenticate',
     method: 'POST',
     path: '/v2/auth/token',
-    body: JSON.stringify({ username: '', password: '' }, null, 2),
-    description: 'Get an access token using your merchant credentials.',
+    body: '',
+    description: 'Get an access token using HTTP Basic Auth with your merchant credentials.',
   },
   {
     id: 'create-invoice',
@@ -111,6 +111,8 @@ export function Playground() {
   const [response, setResponse] = useState<string | null>(null)
   const [status, setStatus] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
 
   const endpoint = ENDPOINTS[selected]
 
@@ -141,7 +143,9 @@ export function Playground() {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       }
-      if (token && endpoint.id !== 'auth') {
+      if (endpoint.id === 'auth') {
+        headers['Authorization'] = `Basic ${btoa(`${username}:${password}`)}`
+      } else if (token) {
         headers['Authorization'] = `Bearer ${token}`
       }
 
@@ -150,7 +154,7 @@ export function Playground() {
         headers,
       }
 
-      if (endpoint.method !== 'GET' && body.trim()) {
+      if (endpoint.method !== 'GET' && endpoint.id !== 'auth' && body.trim()) {
         opts.body = body
       }
 
@@ -289,8 +293,37 @@ export function Playground() {
           </div>
         )}
 
+        {/* Auth credentials */}
+        {endpoint.id === 'auth' && (
+          <div style={{ padding: '0.75rem 1rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: '150px' }}>
+              <label style={{ fontSize: '0.75rem', opacity: 0.6, display: 'block', marginBottom: '0.25rem' }}>
+                Username
+              </label>
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="MERCHANT_USERNAME"
+                style={inputStyle}
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: '150px' }}>
+              <label style={{ fontSize: '0.75rem', opacity: 0.6, display: 'block', marginBottom: '0.25rem' }}>
+                Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="MERCHANT_PASSWORD"
+                style={inputStyle}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Request body */}
-        {endpoint.method !== 'GET' && (
+        {endpoint.method !== 'GET' && endpoint.id !== 'auth' && (
           <div style={{ padding: '0.75rem 1rem' }}>
             <label style={{ fontSize: '0.75rem', opacity: 0.6, display: 'block', marginBottom: '0.25rem' }}>
               Request Body (JSON)
