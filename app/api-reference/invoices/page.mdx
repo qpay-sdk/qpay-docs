@@ -1,17 +1,27 @@
 # Invoices
 
-Invoices are the primary way to request payments through QPay. When you create an invoice, QPay generates a QR code and deep links that customers can use to pay via their banking apps.
+Invoices are the primary mechanism for requesting payments through QPay. When you create an invoice, QPay generates a QR code and deep links that customers can use to pay via their banking apps.
+
+---
 
 ## Create Invoice
 
-**`POST /v2/invoice`**
+```
+POST /v2/invoice
+```
 
-Creates an invoice. You can create three types of invoices:
-- **Simple invoice** -- minimal fields, quickest to set up
-- **Full invoice** -- all options including line items, branch data, and transaction details
-- **Ebarimt invoice** -- includes tax (ebarimt) information for electronic tax receipts
+Creates a new payment invoice. QPay supports three types of invoices: simple, full, and ebarimt (tax receipt).
 
-### Request Body (Simple)
+### Request Headers
+
+| Header | Value | Required |
+|--------|-------|----------|
+| `Authorization` | `Bearer <access_token>` | Yes |
+| `Content-Type` | `application/json` | Yes |
+
+### Request Body (Simple Invoice)
+
+The minimal invoice with only required fields:
 
 ```json
 {
@@ -25,17 +35,17 @@ Creates an invoice. You can create three types of invoices:
 ```
 
 | Field | Type | Required | Description |
-|---|---|---|---|
-| `invoice_code` | string | Yes | Your merchant invoice code |
-| `sender_invoice_no` | string | Yes | Your unique invoice/order number |
-| `invoice_receiver_code` | string | Yes | Receiver code (typically `"terminal"`) |
-| `invoice_description` | string | Yes | Human-readable description |
-| `amount` | number | Yes | Payment amount in MNT |
-| `callback_url` | string | Yes | URL for payment notifications |
+|-------|------|----------|-------------|
+| `invoice_code` | string | Yes | Your merchant invoice code (assigned by QPay) |
+| `sender_invoice_no` | string | Yes | Your unique invoice/order reference number |
+| `invoice_receiver_code` | string | Yes | Receiver code (use `"terminal"` for general payments, or customer email) |
+| `invoice_description` | string | Yes | Human-readable description shown to the payer |
+| `amount` | number | Yes | Payment amount in MNT (Mongolian Tugrik) |
+| `callback_url` | string | Yes | URL where QPay sends payment notification callbacks |
 
-### Request Body (Full)
+### Request Body (Full Invoice)
 
-Includes all fields from the simple invoice, plus:
+Full invoice with all available options including branch data, receiver data, line items, and transaction accounts:
 
 ```json
 {
@@ -113,9 +123,39 @@ Includes all fields from the simple invoice, plus:
 }
 ```
 
-### Request Body (Ebarimt)
+#### Additional Fields (Full Invoice)
 
-For invoices with tax receipt information:
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `sender_branch_code` | string | No | Branch code of the sender |
+| `sender_branch_data` | object | No | Branch details (name, email, phone, address) |
+| `sender_staff_data` | object | No | Staff member details (name, email, phone) |
+| `invoice_receiver_data` | object | No | Receiver details (register, name, email, phone) |
+| `enable_expiry` | string | No | Enable invoice expiry (`"true"` or `"false"`) |
+| `allow_partial` | boolean | No | Allow partial payment |
+| `minimum_amount` | number | No | Minimum payment amount (when `allow_partial` is true) |
+| `allow_exceed` | boolean | No | Allow payment exceeding the invoice amount |
+| `maximum_amount` | number | No | Maximum payment amount (when `allow_exceed` is true) |
+| `note` | string | No | Additional notes |
+| `transactions` | array | No | Transaction routing details with bank accounts |
+| `lines` | array | No | Line items with descriptions, quantities, and prices |
+
+#### Line Item Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tax_product_code` | string | Tax product code |
+| `line_description` | string | Item description |
+| `line_quantity` | string | Quantity |
+| `line_unit_price` | string | Unit price |
+| `note` | string | Item note |
+| `discounts` | array | Discount items (`{ description, amount }`) |
+| `surcharges` | array | Surcharge items (`{ description, amount }`) |
+| `taxes` | array | Tax items (`{ description, amount }`) |
+
+### Request Body (Ebarimt Invoice)
+
+For invoices that include electronic tax receipt (ebarimt) information:
 
 ```json
 {
@@ -139,10 +179,27 @@ For invoices with tax receipt information:
 ```
 
 | Field | Type | Required | Description |
-|---|---|---|---|
+|-------|------|----------|-------------|
 | `tax_type` | string | Yes | Tax type code |
 | `district_code` | string | Yes | District code for tax purposes |
-| `lines` | array | Yes | Line items with tax product codes |
+| `lines` | array | Yes | Line items with tax product codes and classification codes |
+| `lines[].classification_code` | string | No | Classification code for the line item |
+
+### Example Request
+
+```bash
+curl -X POST https://merchant.qpay.mn/v2/invoice \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "invoice_code": "YOUR_INVOICE_CODE",
+    "sender_invoice_no": "ORDER-001",
+    "invoice_receiver_code": "terminal",
+    "invoice_description": "Payment for Order #001",
+    "amount": 50000,
+    "callback_url": "https://yoursite.com/callback"
+  }'
+```
 
 ### Response
 
@@ -170,51 +227,272 @@ For invoices with tax receipt information:
 ```
 
 | Field | Type | Description |
-|---|---|---|
-| `invoice_id` | string | Unique invoice identifier |
-| `qr_text` | string | QR code data as text |
-| `qr_image` | string | Base64-encoded PNG QR code image |
-| `qPay_shortUrl` | string | Short URL for payment |
-| `urls` | array | Deep links for mobile banking apps |
+|-------|------|-------------|
+| `invoice_id` | string | Unique invoice identifier (use this to check payment status) |
+| `qr_text` | string | QR code data as a text string |
+| `qr_image` | string | Base64-encoded PNG image of the QR code |
+| `qPay_shortUrl` | string | Short URL that opens the QPay payment page |
+| `urls` | array | Array of deep links for mobile banking apps |
+| `urls[].name` | string | Bank name |
+| `urls[].description` | string | Bank app description |
+| `urls[].logo` | string | Bank logo image URL |
+| `urls[].link` | string | Deep link URL to open the banking app |
 
-### Error Codes
+### Error Responses
 
-| Code | Description |
-|---|---|
-| `INVOICE_CODE_INVALID` | Invalid invoice code |
-| `INVOICE_LINE_REQUIRED` | Invoice lines are required (for ebarimt invoices) |
-| `INVALID_AMOUNT` | Invalid payment amount |
-| `MIN_AMOUNT_ERR` | Amount below minimum |
-| `MAX_AMOUNT_ERR` | Amount exceeds maximum |
-| `MERCHANT_NOTFOUND` | Merchant not found |
-| `MERCHANT_INACTIVE` | Merchant account is inactive |
+| HTTP Status | Error Code | Description |
+|-------------|------------|-------------|
+| `400` | `INVOICE_CODE_INVALID` | The provided invoice code is invalid or does not belong to your merchant |
+| `400` | `INVOICE_LINE_REQUIRED` | Line items are required (for ebarimt invoices) |
+| `400` | `INVALID_AMOUNT` | The payment amount is invalid (zero, negative, or non-numeric) |
+| `400` | `MIN_AMOUNT_ERR` | Amount is below the allowed minimum |
+| `400` | `MAX_AMOUNT_ERR` | Amount exceeds the allowed maximum |
+| `404` | `MERCHANT_NOTFOUND` | Merchant account not found |
+| `403` | `MERCHANT_INACTIVE` | Merchant account is disabled or inactive |
+
+---
+
+## Get Invoice
+
+```
+GET /v2/invoice/{id}
+```
+
+Retrieves the details of an existing invoice by its ID.
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | string | The invoice ID returned from the create invoice response |
+
+### Request Headers
+
+| Header | Value | Required |
+|--------|-------|----------|
+| `Authorization` | `Bearer <access_token>` | Yes |
+
+### Example Request
+
+```bash
+curl -X GET https://merchant.qpay.mn/v2/invoice/abc123-def456-ghi789 \
+  -H "Authorization: Bearer <access_token>"
+```
+
+### Response
+
+Returns the full invoice object including its current status, QR code data, and payment URLs.
+
+### Error Responses
+
+| HTTP Status | Error Code | Description |
+|-------------|------------|-------------|
+| `404` | `INVOICE_NOTFOUND` | Invoice does not exist |
 
 ---
 
 ## Cancel Invoice
 
-**`DELETE /v2/invoice/{id}`**
+```
+DELETE /v2/invoice/{id}
+```
 
 Cancels an existing invoice by its invoice ID. Only unpaid invoices can be cancelled.
 
 ### Path Parameters
 
 | Parameter | Type | Description |
-|---|---|---|
+|-----------|------|-------------|
 | `id` | string | The invoice ID to cancel |
 
-### Request
+### Request Headers
 
-No request body.
+| Header | Value | Required |
+|--------|-------|----------|
+| `Authorization` | `Bearer <access_token>` | Yes |
+
+### Example Request
+
+```bash
+curl -X DELETE https://merchant.qpay.mn/v2/invoice/abc123-def456-ghi789 \
+  -H "Authorization: Bearer <access_token>"
+```
 
 ### Response
 
-HTTP 200 on success (empty body).
+HTTP `200` on success with an empty response body.
 
-### Error Codes
+### Error Responses
 
-| Code | Description |
-|---|---|
-| `INVOICE_NOTFOUND` | Invoice does not exist |
-| `INVOICE_ALREADY_CANCELED` | Invoice was already cancelled |
-| `INVOICE_PAID` | Invoice has been paid and cannot be cancelled |
+| HTTP Status | Error Code | Description |
+|-------------|------------|-------------|
+| `404` | `INVOICE_NOTFOUND` | Invoice does not exist |
+| `400` | `INVOICE_ALREADY_CANCELED` | Invoice was already cancelled |
+| `400` | `INVOICE_PAID` | Invoice has been paid and cannot be cancelled |
+
+---
+
+## List Invoices
+
+```
+POST /v2/invoice/list
+```
+
+Returns a paginated list of invoices matching the given filter criteria.
+
+### Request Headers
+
+| Header | Value | Required |
+|--------|-------|----------|
+| `Authorization` | `Bearer <access_token>` | Yes |
+| `Content-Type` | `application/json` | Yes |
+
+### Request Body
+
+```json
+{
+  "invoice_code": "YOUR_INVOICE_CODE",
+  "sender_invoice_no": "",
+  "invoice_status": "",
+  "start_date": "2026-01-01",
+  "end_date": "2026-12-31",
+  "offset": {
+    "page_number": 1,
+    "page_limit": 20
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `invoice_code` | string | No | Filter by invoice code |
+| `sender_invoice_no` | string | No | Filter by your reference number |
+| `invoice_status` | string | No | Filter by status |
+| `start_date` | string | No | Start date filter (YYYY-MM-DD) |
+| `end_date` | string | No | End date filter (YYYY-MM-DD) |
+| `offset` | object | Yes | Pagination parameters |
+| `offset.page_number` | number | Yes | Page number (starts at 1) |
+| `offset.page_limit` | number | Yes | Number of items per page |
+
+### Example Request
+
+```bash
+curl -X POST https://merchant.qpay.mn/v2/invoice/list \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "start_date": "2026-01-01",
+    "end_date": "2026-12-31",
+    "offset": {
+      "page_number": 1,
+      "page_limit": 20
+    }
+  }'
+```
+
+### Response
+
+```json
+{
+  "count": 42,
+  "rows": [
+    {
+      "invoice_id": "abc123-def456-ghi789",
+      "invoice_code": "YOUR_INVOICE_CODE",
+      "sender_invoice_no": "ORDER-001",
+      "invoice_description": "Payment for Order #001",
+      "amount": 50000,
+      "invoice_status": "OPEN",
+      "created_date": "2026-02-26T10:00:00"
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `count` | number | Total number of matching invoices |
+| `rows` | array | Array of invoice summary objects |
+
+---
+
+## Check Invoice Payment
+
+```
+POST /v2/invoice/check
+```
+
+Checks whether a payment has been made for a given invoice. This is functionally equivalent to `POST /v2/payment/check` but specifically designed for invoice-based lookups.
+
+### Request Headers
+
+| Header | Value | Required |
+|--------|-------|----------|
+| `Authorization` | `Bearer <access_token>` | Yes |
+| `Content-Type` | `application/json` | Yes |
+
+### Request Body
+
+```json
+{
+  "object_type": "INVOICE",
+  "object_id": "abc123-def456-ghi789",
+  "offset": {
+    "page_number": 1,
+    "page_limit": 10
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `object_type` | string | Yes | Always `"INVOICE"` |
+| `object_id` | string | Yes | The invoice ID to check |
+| `offset` | object | No | Pagination for multiple payments |
+| `offset.page_number` | number | No | Page number (default: 1) |
+| `offset.page_limit` | number | No | Items per page (default: 10) |
+
+### Example Request
+
+```bash
+curl -X POST https://merchant.qpay.mn/v2/invoice/check \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object_type": "INVOICE",
+    "object_id": "abc123-def456-ghi789"
+  }'
+```
+
+### Response
+
+```json
+{
+  "count": 1,
+  "paid_amount": 50000.00,
+  "rows": [
+    {
+      "payment_id": "pay-abc123",
+      "payment_status": "PAID",
+      "payment_amount": "50000.00",
+      "payment_currency": "MNT",
+      "payment_wallet": "qpay",
+      "payment_type": "P2P"
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `count` | number | Number of payments found |
+| `paid_amount` | number | Total amount paid |
+| `rows` | array | Array of payment detail objects |
+
+If `count` is `0` and `rows` is empty, no payment has been made yet.
+
+### Error Responses
+
+| HTTP Status | Error Code | Description |
+|-------------|------------|-------------|
+| `400` | `INVALID_OBJECT_TYPE` | Invalid object type (must be `"INVOICE"`) |

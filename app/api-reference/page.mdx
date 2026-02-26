@@ -1,12 +1,15 @@
 # API Reference
 
-Complete reference for the QPay V2 API endpoints. All endpoints use JSON request/response bodies and require authentication via Bearer token (except the token endpoint itself).
+Complete reference for the QPay V2 API. All endpoints use JSON request and response bodies. Authentication is via Bearer token, obtained through Basic Auth credentials.
 
-## Base URL
+## Base URLs
 
-```
-https://merchant.qpay.mn
-```
+| Environment | URL |
+|-------------|-----|
+| **Production** | `https://merchant.qpay.mn` |
+| **Sandbox** | `https://merchant-sandbox.qpay.mn` |
+
+Use the sandbox URL for development and testing. All API behavior is identical between environments.
 
 ## Authentication
 
@@ -16,55 +19,66 @@ All endpoints (except `POST /v2/auth/token`) require a Bearer token in the `Auth
 Authorization: Bearer <access_token>
 ```
 
-See [Authentication](/api-reference/authentication) for details on obtaining and refreshing tokens.
+To obtain a token, send your merchant credentials via Basic Auth to the token endpoint. See [Authentication](/api-reference/authentication) for full details.
 
-## Endpoints
+## Content Type
+
+All requests must include the `Content-Type` header:
+
+```
+Content-Type: application/json
+```
+
+## Endpoints Overview
 
 ### Authentication
 
-| Method | Path | Description |
-|---|---|---|
-| POST | `/v2/auth/token` | [Get access token](/api-reference/authentication#get-token) |
-| POST | `/v2/auth/refresh` | [Refresh access token](/api-reference/authentication#refresh-token) |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/v2/auth/token` | [Get access token](/api-reference/authentication#get-token) |
+| `POST` | `/v2/auth/refresh` | [Refresh access token](/api-reference/authentication#refresh-token) |
 
 ### Invoices
 
-| Method | Path | Description |
-|---|---|---|
-| POST | `/v2/invoice` | [Create invoice](/api-reference/invoices#create-invoice) |
-| DELETE | `/v2/invoice/{id}` | [Cancel invoice](/api-reference/invoices#cancel-invoice) |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/v2/invoice` | [Create invoice](/api-reference/invoices#create-invoice) |
+| `GET` | `/v2/invoice/{id}` | [Get invoice](/api-reference/invoices#get-invoice) |
+| `DELETE` | `/v2/invoice/{id}` | [Cancel invoice](/api-reference/invoices#cancel-invoice) |
+| `POST` | `/v2/invoice/list` | [List invoices](/api-reference/invoices#list-invoices) |
+| `POST` | `/v2/invoice/check` | [Check invoice payment status](/api-reference/invoices#check-invoice-payment) |
 
 ### Payments
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/v2/payment/{id}` | [Get payment details](/api-reference/payments#get-payment) |
-| POST | `/v2/payment/check` | [Check payment status](/api-reference/payments#check-payment) |
-| POST | `/v2/payment/list` | [List payments](/api-reference/payments#list-payments) |
-| DELETE | `/v2/payment/cancel/{id}` | [Cancel payment](/api-reference/payments#cancel-payment) |
-| DELETE | `/v2/payment/refund/{id}` | [Refund payment](/api-reference/payments#refund-payment) |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/v2/payment/{id}` | [Get payment details](/api-reference/payments#get-payment) |
+| `POST` | `/v2/payment/check` | [Check payment status](/api-reference/payments#check-payment) |
+| `POST` | `/v2/payment/list` | [List payments](/api-reference/payments#list-payments) |
+| `POST` | `/v2/payment/cancel/{id}` | [Cancel payment](/api-reference/payments#cancel-payment) |
+| `POST` | `/v2/payment/refund/{id}` | [Refund payment](/api-reference/payments#refund-payment) |
 
 ### Ebarimt
 
-| Method | Path | Description |
-|---|---|---|
-| POST | `/v2/ebarimt_v3/create` | [Create ebarimt](/api-reference/ebarimt#create-ebarimt) |
-| DELETE | `/v2/ebarimt_v3/{id}` | [Cancel ebarimt](/api-reference/ebarimt#cancel-ebarimt) |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/v2/ebarimt_v3/create` | [Create ebarimt](/api-reference/ebarimt#create-ebarimt) |
+| `DELETE` | `/v2/ebarimt_v3/{id}` | [Cancel ebarimt](/api-reference/ebarimt#cancel-ebarimt) |
 
-## Common Response Codes
+## HTTP Status Codes
 
 | Status Code | Description |
-|---|---|
-| 200 | Success |
-| 400 | Bad request (invalid parameters) |
-| 401 | Unauthorized (invalid or expired token) |
-| 403 | Forbidden (insufficient permissions) |
-| 404 | Resource not found |
-| 500 | Internal server error |
+|-------------|-------------|
+| `200` | Success -- request processed successfully |
+| `400` | Bad Request -- invalid parameters or malformed request body |
+| `401` | Unauthorized -- missing, invalid, or expired token |
+| `403` | Forbidden -- insufficient permissions for this operation |
+| `404` | Not Found -- the requested resource does not exist |
+| `500` | Internal Server Error -- an unexpected error occurred on the QPay server |
 
 ## Error Response Format
 
-All error responses follow this format:
+All error responses return a JSON body with the following structure:
 
 ```json
 {
@@ -73,4 +87,55 @@ All error responses follow this format:
 }
 ```
 
-See [Error Codes](/error-codes) for a complete list of error codes.
+| Field | Type | Description |
+|-------|------|-------------|
+| `error_code` | string | Machine-readable error code for programmatic handling |
+| `message` | string | Human-readable description of the error |
+
+See [Error Codes](/error-codes) for a complete list of error codes and their meanings.
+
+## Rate Limits
+
+The QPay API applies rate limiting per merchant account. If you exceed the rate limit, you will receive a `429 Too Many Requests` response. Implement exponential backoff in your retry logic.
+
+## Quick Start
+
+Here is a minimal example of the complete payment flow using cURL:
+
+### 1. Get Access Token
+
+```bash
+curl -X POST https://merchant.qpay.mn/v2/auth/token \
+  -H "Authorization: Basic $(echo -n 'username:password' | base64)" \
+  -H "Content-Type: application/json"
+```
+
+### 2. Create Invoice
+
+```bash
+curl -X POST https://merchant.qpay.mn/v2/invoice \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "invoice_code": "YOUR_INVOICE_CODE",
+    "sender_invoice_no": "ORDER-001",
+    "invoice_receiver_code": "terminal",
+    "invoice_description": "Payment for Order #001",
+    "amount": 50000,
+    "callback_url": "https://yoursite.com/callback"
+  }'
+```
+
+### 3. Check Payment Status
+
+```bash
+curl -X POST https://merchant.qpay.mn/v2/payment/check \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object_type": "INVOICE",
+    "object_id": "<invoice_id>"
+  }'
+```
+
+For language-specific examples, see our [SDK documentation](/sdks).

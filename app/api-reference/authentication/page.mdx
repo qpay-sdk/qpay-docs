@@ -1,33 +1,46 @@
 # Authentication
 
-QPay uses a token-based authentication system. You first obtain an access token using your merchant credentials, then include that token in subsequent API requests.
+QPay V2 uses a token-based authentication system. You authenticate with your merchant credentials via Basic Auth to obtain an access token, then include that token as a Bearer token in all subsequent API requests.
 
-All QPay SDKs handle authentication automatically. You typically do not need to call these endpoints directly.
+All QPay SDKs handle this token lifecycle automatically. You typically do not need to call these endpoints directly when using an SDK.
+
+---
 
 ## Get Token
 
-**`POST /v2/auth/token`**
+```
+POST /v2/auth/token
+```
 
-Authenticates using Basic Auth (username:password) and returns an access token and refresh token.
+Authenticates using Basic Auth (username:password) and returns an access token and refresh token pair.
 
 ### Request
 
 **Headers:**
 
-```
-Authorization: Basic base64(username:password)
-```
+| Header | Value | Required |
+|--------|-------|----------|
+| `Authorization` | `Basic base64(username:password)` | Yes |
+| `Content-Type` | `application/json` | Yes |
 
 No request body is required.
+
+### Example Request
+
+```bash
+curl -X POST https://merchant.qpay.mn/v2/auth/token \
+  -H "Authorization: Basic $(echo -n 'YOUR_USERNAME:YOUR_PASSWORD' | base64)" \
+  -H "Content-Type: application/json"
+```
 
 ### Response
 
 ```json
 {
   "token_type": "Bearer",
-  "access_token": "eyJhbGciOiJSUzI1NiIs...",
+  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
   "expires_in": 600,
-  "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "refresh_expires_in": 3600,
   "scope": "...",
   "not-before-policy": "...",
@@ -36,66 +49,161 @@ No request body is required.
 ```
 
 | Field | Type | Description |
-|---|---|---|
+|-------|------|-------------|
 | `token_type` | string | Always `"Bearer"` |
 | `access_token` | string | JWT access token for API calls |
-| `expires_in` | number | Access token TTL in seconds (typically 600) |
+| `expires_in` | number | Access token TTL in seconds (typically 600 = 10 minutes) |
 | `refresh_token` | string | Token used to refresh the access token |
-| `refresh_expires_in` | number | Refresh token TTL in seconds (typically 3600) |
+| `refresh_expires_in` | number | Refresh token TTL in seconds (typically 3600 = 1 hour) |
+| `scope` | string | Token scope |
+| `not-before-policy` | string | Token not-before policy timestamp |
+| `session_state` | string | Session state identifier |
 
-### Error Codes
+### Error Responses
 
-| Code | Description |
-|---|---|
-| `AUTHENTICATION_FAILED` | Invalid username or password |
-| `NO_CREDENDIALS` | Missing credentials |
+| HTTP Status | Error Code | Description |
+|-------------|------------|-------------|
+| `401` | `AUTHENTICATION_FAILED` | Invalid username or password |
+| `401` | `NO_CREDENDIALS` | Missing or malformed Authorization header |
+
+**Error example:**
+
+```json
+{
+  "error_code": "AUTHENTICATION_FAILED",
+  "message": "Invalid username or password"
+}
+```
 
 ---
 
 ## Refresh Token
 
-**`POST /v2/auth/refresh`**
+```
+POST /v2/auth/refresh
+```
 
-Uses a refresh token to obtain a new access token pair. The refresh token is sent in the Authorization header.
+Uses a refresh token to obtain a new access token pair without re-authenticating with credentials. The refresh token is sent in the Authorization header as a Bearer token.
 
 ### Request
 
 **Headers:**
 
-```
-Authorization: Bearer <refresh_token>
-```
+| Header | Value | Required |
+|--------|-------|----------|
+| `Authorization` | `Bearer <refresh_token>` | Yes |
+| `Content-Type` | `application/json` | Yes |
 
 No request body is required.
 
+### Example Request
+
+```bash
+curl -X POST https://merchant.qpay.mn/v2/auth/refresh \
+  -H "Authorization: Bearer <refresh_token>" \
+  -H "Content-Type: application/json"
+```
+
 ### Response
 
-Same structure as Get Token:
+Same structure as the Get Token response:
 
 ```json
 {
   "token_type": "Bearer",
-  "access_token": "eyJhbGciOiJSUzI1NiIs...",
+  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
   "expires_in": 600,
-  "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "refresh_expires_in": 3600
 }
 ```
 
-### Error Codes
+| Field | Type | Description |
+|-------|------|-------------|
+| `token_type` | string | Always `"Bearer"` |
+| `access_token` | string | New JWT access token |
+| `expires_in` | number | New access token TTL in seconds |
+| `refresh_token` | string | New refresh token (the old one is invalidated) |
+| `refresh_expires_in` | number | New refresh token TTL in seconds |
 
-| Code | Description |
-|---|---|
-| `AUTHENTICATION_FAILED` | Invalid or expired refresh token |
+### Error Responses
+
+| HTTP Status | Error Code | Description |
+|-------------|------------|-------------|
+| `401` | `AUTHENTICATION_FAILED` | Invalid or expired refresh token |
 
 ---
 
 ## Token Lifecycle
 
-1. **Initial authentication**: Call `POST /v2/auth/token` with Basic Auth credentials.
-2. **Use access token**: Include the access token in all subsequent requests as `Authorization: Bearer <access_token>`.
-3. **Token expiry**: When the access token expires (typically after 600 seconds), refresh it.
-4. **Refresh**: Call `POST /v2/auth/refresh` with the refresh token to get a new token pair.
-5. **Refresh token expiry**: If the refresh token also expires (typically after 3600 seconds), re-authenticate with credentials.
+The recommended authentication flow:
 
-All QPay SDKs implement this lifecycle automatically. You do not need to manage tokens manually in most cases.
+```
+1. Initial Auth
+   POST /v2/auth/token (Basic Auth)
+       |
+       v
+   access_token (10 min)  +  refresh_token (1 hour)
+       |
+       v
+2. Use Access Token
+   All API requests: Authorization: Bearer <access_token>
+       |
+       v
+3. Token Expires (after ~10 min)
+       |
+       v
+4. Refresh
+   POST /v2/auth/refresh (Bearer refresh_token)
+       |
+       v
+   New access_token + New refresh_token
+       |
+       v
+5. Refresh Token Expires (after ~1 hour)
+       |
+       v
+6. Re-authenticate
+   Back to Step 1: POST /v2/auth/token
+```
+
+### Implementation Guidelines
+
+- **Cache the access token** for its TTL minus a safety margin (e.g., `expires_in - 30` seconds) to avoid using an expired token
+- **Store the refresh token** separately with its own TTL
+- **On 401 responses**, attempt a token refresh before re-authenticating with credentials
+- **Thread safety**: If your application makes concurrent requests, ensure token refresh is synchronized to avoid race conditions
+- **Never expose tokens** in client-side code, URLs, or logs
+
+### Token Lifetimes
+
+| Token | Typical TTL | Purpose |
+|-------|-------------|---------|
+| Access token | 600 seconds (10 minutes) | Used in API request headers |
+| Refresh token | 3600 seconds (1 hour) | Used to get new access tokens |
+
+Both tokens are JWTs (JSON Web Tokens). The access token is signed with RSA (RS256) and the refresh token with HMAC (HS256).
+
+---
+
+## Using Authentication in API Requests
+
+Once you have an access token, include it in the `Authorization` header of all subsequent API requests:
+
+```bash
+curl -X POST https://merchant.qpay.mn/v2/invoice \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIs..." \
+  -H "Content-Type: application/json" \
+  -d '{ ... }'
+```
+
+If the token is expired, you will receive a `401` response:
+
+```json
+{
+  "error_code": "AUTHENTICATION_FAILED",
+  "message": "Token expired or invalid"
+}
+```
+
+At that point, refresh the token or re-authenticate.

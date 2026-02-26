@@ -1,18 +1,35 @@
 # Payments
 
-Payment endpoints allow you to check payment status, retrieve payment details, list payments, and manage cancellations and refunds.
+Payment endpoints allow you to retrieve payment details, check payment status, list payments, and manage cancellations and refunds.
+
+---
 
 ## Get Payment
 
-**`GET /v2/payment/{id}`**
+```
+GET /v2/payment/{id}
+```
 
-Retrieves detailed information about a specific payment by its ID.
+Retrieves detailed information about a specific payment by its payment ID.
+
+### Request Headers
+
+| Header | Value | Required |
+|--------|-------|----------|
+| `Authorization` | `Bearer <access_token>` | Yes |
 
 ### Path Parameters
 
 | Parameter | Type | Description |
-|---|---|---|
+|-----------|------|-------------|
 | `id` | string | The payment ID |
+
+### Example Request
+
+```bash
+curl -X GET https://merchant.qpay.mn/v2/payment/pay-abc123 \
+  -H "Authorization: Bearer <access_token>"
+```
 
 ### Response
 
@@ -45,40 +62,62 @@ Retrieves detailed information about a specific payment by its ID.
 ```
 
 | Field | Type | Description |
-|---|---|---|
+|-------|------|-------------|
 | `payment_id` | string | Unique payment identifier |
-| `payment_status` | string | Payment status (`PAID`, `PENDING`, etc.) |
-| `payment_fee` | string | Transaction fee |
-| `payment_amount` | string | Payment amount |
+| `payment_status` | string | Payment status: `PAID`, `PENDING`, `CANCELLED`, `REFUNDED` |
+| `payment_fee` | string | Transaction fee charged by QPay |
+| `payment_amount` | string | Total payment amount |
 | `payment_currency` | string | Currency code (e.g., `MNT`) |
-| `payment_date` | string | Payment timestamp |
-| `payment_wallet` | string | Payment wallet name |
-| `transaction_type` | string | Transaction type (`P2P`, `CARD`, etc.) |
-| `object_type` | string | Object type (`INVOICE`) |
-| `object_id` | string | Related object ID (invoice ID) |
-| `card_transactions` | array | Card transaction details |
-| `p2p_transactions` | array | P2P (bank transfer) transaction details |
+| `payment_date` | string | Payment timestamp (ISO 8601 format) |
+| `payment_wallet` | string | Payment wallet identifier |
+| `transaction_type` | string | Transaction type: `P2P` (bank transfer) or `CARD` |
+| `object_type` | string | Related object type (always `INVOICE`) |
+| `object_id` | string | Related invoice ID |
+| `card_transactions` | array | Card transaction details (empty for P2P payments) |
+| `p2p_transactions` | array | P2P bank transfer transaction details |
 
-### Error Codes
+#### P2P Transaction Fields
 
-| Code | Description |
-|---|---|
-| `PAYMENT_NOTFOUND` | Payment does not exist |
+| Field | Type | Description |
+|-------|------|-------------|
+| `transaction_bank_code` | string | Sending bank code |
+| `account_bank_code` | string | Receiving bank code |
+| `account_bank_name` | string | Receiving bank name |
+| `account_number` | string | Receiving account number |
+| `status` | string | Transaction status: `SUCCESS`, `PENDING`, `FAILED` |
+| `amount` | string | Transaction amount |
+| `currency` | string | Transaction currency |
+| `settlement_status` | string | Settlement status: `SETTLED`, `PENDING` |
+
+### Error Responses
+
+| HTTP Status | Error Code | Description |
+|-------------|------------|-------------|
+| `404` | `PAYMENT_NOTFOUND` | Payment does not exist |
 
 ---
 
 ## Check Payment
 
-**`POST /v2/payment/check`**
+```
+POST /v2/payment/check
+```
 
-Checks if a payment has been made for a given invoice. This is the primary endpoint for verifying payment status after creating an invoice.
+Checks if a payment has been made for a given invoice. This is the primary endpoint for verifying payment status after creating an invoice. Use this endpoint for both webhook verification and client-side polling.
+
+### Request Headers
+
+| Header | Value | Required |
+|--------|-------|----------|
+| `Authorization` | `Bearer <access_token>` | Yes |
+| `Content-Type` | `application/json` | Yes |
 
 ### Request Body
 
 ```json
 {
   "object_type": "INVOICE",
-  "object_id": "invoice-id-here",
+  "object_id": "abc123-def456-ghi789",
   "offset": {
     "page_number": 1,
     "page_limit": 10
@@ -87,14 +126,26 @@ Checks if a payment has been made for a given invoice. This is the primary endpo
 ```
 
 | Field | Type | Required | Description |
-|---|---|---|---|
-| `object_type` | string | Yes | Object type (typically `"INVOICE"`) |
+|-------|------|----------|-------------|
+| `object_type` | string | Yes | Object type -- use `"INVOICE"` |
 | `object_id` | string | Yes | The invoice ID to check |
 | `offset` | object | No | Pagination parameters |
 | `offset.page_number` | number | No | Page number (default: 1) |
 | `offset.page_limit` | number | No | Items per page (default: 10) |
 
-### Response
+### Example Request
+
+```bash
+curl -X POST https://merchant.qpay.mn/v2/payment/check \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object_type": "INVOICE",
+    "object_id": "abc123-def456-ghi789"
+  }'
+```
+
+### Response (Payment Found)
 
 ```json
 {
@@ -125,32 +176,62 @@ Checks if a payment has been made for a given invoice. This is the primary endpo
 }
 ```
 
+### Response (No Payment Yet)
+
+```json
+{
+  "count": 0,
+  "paid_amount": 0,
+  "rows": []
+}
+```
+
 | Field | Type | Description |
-|---|---|---|
-| `count` | number | Total number of payments found |
-| `paid_amount` | number | Total paid amount |
-| `rows` | array | Array of payment details |
+|-------|------|-------------|
+| `count` | number | Total number of payments found for this invoice |
+| `paid_amount` | number | Total paid amount across all payments |
+| `rows` | array | Array of payment detail objects |
+| `rows[].payment_id` | string | Payment identifier |
+| `rows[].payment_status` | string | Payment status |
+| `rows[].payment_amount` | string | Payment amount |
+| `rows[].trx_fee` | string | Transaction fee |
+| `rows[].payment_currency` | string | Currency code |
+| `rows[].payment_wallet` | string | Payment wallet |
+| `rows[].payment_type` | string | Transaction type (`P2P` or `CARD`) |
+| `rows[].card_transactions` | array | Card transaction details |
+| `rows[].p2p_transactions` | array | P2P transaction details |
 
-### Error Codes
+**How to determine payment status**: If `count > 0` and `rows` contains entries, the invoice has been paid. If `count` is `0` and `rows` is empty, no payment has been made yet.
 
-| Code | Description |
-|---|---|
-| `INVALID_OBJECT_TYPE` | Invalid object type |
+### Error Responses
+
+| HTTP Status | Error Code | Description |
+|-------------|------------|-------------|
+| `400` | `INVALID_OBJECT_TYPE` | Invalid object type (must be `"INVOICE"`) |
 
 ---
 
 ## List Payments
 
-**`POST /v2/payment/list`**
+```
+POST /v2/payment/list
+```
 
-Returns a paginated list of payments matching the given criteria. You can filter by object type, object ID, and date range.
+Returns a paginated list of payments matching the given filter criteria. You can filter by object type, object ID, and date range.
+
+### Request Headers
+
+| Header | Value | Required |
+|--------|-------|----------|
+| `Authorization` | `Bearer <access_token>` | Yes |
+| `Content-Type` | `application/json` | Yes |
 
 ### Request Body
 
 ```json
 {
   "object_type": "INVOICE",
-  "object_id": "invoice-id-here",
+  "object_id": "abc123-def456-ghi789",
   "start_date": "2026-01-01",
   "end_date": "2026-12-31",
   "offset": {
@@ -161,14 +242,32 @@ Returns a paginated list of payments matching the given criteria. You can filter
 ```
 
 | Field | Type | Required | Description |
-|---|---|---|---|
+|-------|------|----------|-------------|
 | `object_type` | string | Yes | Object type (typically `"INVOICE"`) |
 | `object_id` | string | Yes | The invoice ID |
-| `start_date` | string | Yes | Start date (YYYY-MM-DD) |
-| `end_date` | string | Yes | End date (YYYY-MM-DD) |
+| `start_date` | string | Yes | Start date filter (YYYY-MM-DD) |
+| `end_date` | string | Yes | End date filter (YYYY-MM-DD) |
 | `offset` | object | Yes | Pagination parameters |
-| `offset.page_number` | number | Yes | Page number |
+| `offset.page_number` | number | Yes | Page number (starts at 1) |
 | `offset.page_limit` | number | Yes | Items per page |
+
+### Example Request
+
+```bash
+curl -X POST https://merchant.qpay.mn/v2/payment/list \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object_type": "INVOICE",
+    "object_id": "abc123-def456-ghi789",
+    "start_date": "2026-01-01",
+    "end_date": "2026-12-31",
+    "offset": {
+      "page_number": 1,
+      "page_limit": 20
+    }
+  }'
+```
 
 ### Response
 
@@ -188,28 +287,61 @@ Returns a paginated list of payments matching the given criteria. You can filter
       "payment_description": "...",
       "object_type": "INVOICE",
       "object_id": "inv-abc123"
+    },
+    {
+      "payment_id": "pay-def456",
+      "payment_date": "2026-02-25T14:30:00",
+      "payment_status": "PAID",
+      "payment_fee": "0.00",
+      "payment_amount": "25000.00",
+      "payment_currency": "MNT",
+      "payment_wallet": "qpay",
+      "payment_name": "...",
+      "payment_description": "...",
+      "object_type": "INVOICE",
+      "object_id": "inv-def456"
     }
   ]
 }
 ```
 
 | Field | Type | Description |
-|---|---|---|
+|-------|------|-------------|
 | `count` | number | Total number of matching payments |
-| `rows` | array | Array of payment list items |
+| `rows` | array | Array of payment summary objects |
+| `rows[].payment_id` | string | Payment identifier |
+| `rows[].payment_date` | string | Payment timestamp |
+| `rows[].payment_status` | string | Payment status |
+| `rows[].payment_fee` | string | Transaction fee |
+| `rows[].payment_amount` | string | Payment amount |
+| `rows[].payment_currency` | string | Currency code |
+| `rows[].payment_wallet` | string | Payment wallet |
+| `rows[].payment_name` | string | Payment name |
+| `rows[].payment_description` | string | Payment description |
+| `rows[].object_type` | string | Related object type |
+| `rows[].object_id` | string | Related object ID |
 
 ---
 
 ## Cancel Payment
 
-**`DELETE /v2/payment/cancel/{id}`**
+```
+POST /v2/payment/cancel/{id}
+```
 
-Cancels a payment by its payment ID. Only applicable to card transactions.
+Cancels a payment by its payment ID. This operation is only applicable to card transactions. P2P (bank transfer) payments cannot be cancelled through the API.
+
+### Request Headers
+
+| Header | Value | Required |
+|--------|-------|----------|
+| `Authorization` | `Bearer <access_token>` | Yes |
+| `Content-Type` | `application/json` | Yes |
 
 ### Path Parameters
 
 | Parameter | Type | Description |
-|---|---|---|
+|-----------|------|-------------|
 | `id` | string | The payment ID to cancel |
 
 ### Request Body (Optional)
@@ -222,34 +354,55 @@ Cancels a payment by its payment ID. Only applicable to card transactions.
 ```
 
 | Field | Type | Required | Description |
-|---|---|---|---|
-| `callback_url` | string | No | Callback URL for cancellation status |
+|-------|------|----------|-------------|
+| `callback_url` | string | No | URL for cancellation status notification |
 | `note` | string | No | Reason for cancellation |
+
+### Example Request
+
+```bash
+curl -X POST https://merchant.qpay.mn/v2/payment/cancel/pay-abc123 \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "callback_url": "https://yoursite.com/cancel-callback",
+    "note": "Customer requested cancellation"
+  }'
+```
 
 ### Response
 
-HTTP 200 on success (empty body).
+HTTP `200` on success with an empty response body.
 
-### Error Codes
+### Error Responses
 
-| Code | Description |
-|---|---|
-| `PAYMENT_NOTFOUND` | Payment does not exist |
-| `PAYMENT_NOT_PAID` | Payment has not been completed |
-| `PAYMENT_ALREADY_CANCELED` | Payment was already cancelled |
+| HTTP Status | Error Code | Description |
+|-------------|------------|-------------|
+| `404` | `PAYMENT_NOTFOUND` | Payment does not exist |
+| `400` | `PAYMENT_NOT_PAID` | Payment has not been completed yet |
+| `400` | `PAYMENT_ALREADY_CANCELED` | Payment was already cancelled |
 
 ---
 
 ## Refund Payment
 
-**`DELETE /v2/payment/refund/{id}`**
+```
+POST /v2/payment/refund/{id}
+```
 
-Refunds a payment by its payment ID. Only applicable to card transactions.
+Refunds a payment by its payment ID. This operation is only applicable to card transactions. P2P (bank transfer) payments cannot be refunded through the API.
+
+### Request Headers
+
+| Header | Value | Required |
+|--------|-------|----------|
+| `Authorization` | `Bearer <access_token>` | Yes |
+| `Content-Type` | `application/json` | Yes |
 
 ### Path Parameters
 
 | Parameter | Type | Description |
-|---|---|---|
+|-----------|------|-------------|
 | `id` | string | The payment ID to refund |
 
 ### Request Body (Optional)
@@ -262,18 +415,59 @@ Refunds a payment by its payment ID. Only applicable to card transactions.
 ```
 
 | Field | Type | Required | Description |
-|---|---|---|---|
-| `callback_url` | string | No | Callback URL for refund status |
+|-------|------|----------|-------------|
+| `callback_url` | string | No | URL for refund status notification |
 | `note` | string | No | Reason for refund |
+
+### Example Request
+
+```bash
+curl -X POST https://merchant.qpay.mn/v2/payment/refund/pay-abc123 \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "callback_url": "https://yoursite.com/refund-callback",
+    "note": "Product return"
+  }'
+```
 
 ### Response
 
-HTTP 200 on success (empty body).
+HTTP `200` on success with an empty response body.
 
-### Error Codes
+### Error Responses
 
-| Code | Description |
-|---|---|
-| `PAYMENT_NOTFOUND` | Payment does not exist |
-| `PAYMENT_NOT_PAID` | Payment has not been completed |
-| `PAYMENT_ALREADY_CANCELED` | Payment was already cancelled |
+| HTTP Status | Error Code | Description |
+|-------------|------------|-------------|
+| `404` | `PAYMENT_NOTFOUND` | Payment does not exist |
+| `400` | `PAYMENT_NOT_PAID` | Payment has not been completed yet |
+| `400` | `PAYMENT_ALREADY_CANCELED` | Payment was already cancelled |
+
+---
+
+## Payment Status Values
+
+| Status | Description |
+|--------|-------------|
+| `PAID` | Payment has been completed successfully |
+| `PENDING` | Payment is in progress or awaiting confirmation |
+| `CANCELLED` | Payment has been cancelled |
+| `REFUNDED` | Payment has been refunded |
+
+## Callback / Webhook
+
+When a payment is completed, QPay sends a POST request to the `callback_url` specified during invoice creation. The callback body contains:
+
+```json
+{
+  "invoice_id": "abc123-def456-ghi789"
+}
+```
+
+Upon receiving a callback, your server should:
+
+1. Call `POST /v2/payment/check` with the received `invoice_id` to verify the payment
+2. Update your order/transaction status based on the result
+3. Return an HTTP `200` response to acknowledge receipt
+
+Never trust the callback alone -- always verify via the check endpoint.
