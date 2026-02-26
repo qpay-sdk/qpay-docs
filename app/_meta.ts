@@ -25,6 +25,12 @@ export default {
   examples: {
     title: 'Examples',
   },
+  playground: {
+    title: 'Playground',
+  },
+  tutorials: {
+    title: 'Tutorials',
+  },
   'error-codes': {
     title: 'Error Codes',
   },

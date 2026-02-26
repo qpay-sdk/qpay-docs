@@ -1,3 +1,5 @@
+import { CodeTabs } from '../code-tabs'
+
 # Getting Started
 
 This guide walks you through integrating QPay payments into your application -- from installing an SDK to receiving your first payment.
@@ -146,32 +148,32 @@ QPAY_CALLBACK_URL=https://yoursite.com/api/qpay/callback
 
 Every SDK provides a function to load config from environment variables:
 
+<CodeTabs labels={["Go", "JavaScript", "Python", "PHP"]}>
+
 ```go
-// Go
 cfg, err := qpay.LoadConfigFromEnv()
 client := qpay.NewClient(cfg)
 ```
 
 ```typescript
-// JavaScript / TypeScript
 import { QPayClient, loadConfigFromEnv } from 'qpay-js';
 const client = new QPayClient(loadConfigFromEnv());
 ```
 
 ```python
-# Python
 from qpay import QPayClient, QPayConfig
 config = QPayConfig.from_env()
 client = QPayClient(config)
 ```
 
 ```php
-// PHP
 use QPay\Config;
 use QPay\QPayClient;
 $config = Config::fromEnv();
 $client = new QPayClient($config);
 ```
+
+</CodeTabs>
 
 ### Manual Configuration
 
