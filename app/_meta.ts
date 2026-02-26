@@ -25,4 +25,7 @@ export default {
   'error-codes': {
     title: 'Error Codes',
   },
+  stats: {
+    title: 'Stats',
+  },
 }
