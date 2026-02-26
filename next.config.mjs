@@ -13,5 +13,5 @@ export default withNextra({
   images: {
     unoptimized: true,
   },
-  basePath: '/qpay-docs',
+  basePath: process.env.GITHUB_PAGES ? '/qpay-docs' : '',
 })
