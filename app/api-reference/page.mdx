@@ -1,0 +1,76 @@
+# API Reference
+
+Complete reference for the QPay V2 API endpoints. All endpoints use JSON request/response bodies and require authentication via Bearer token (except the token endpoint itself).
+
+## Base URL
+
+```
+https://merchant.qpay.mn
+```
+
+## Authentication
+
+All endpoints (except `POST /v2/auth/token`) require a Bearer token in the `Authorization` header:
+
+```
+Authorization: Bearer <access_token>
+```
+
+See [Authentication](/api-reference/authentication) for details on obtaining and refreshing tokens.
+
+## Endpoints
+
+### Authentication
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/v2/auth/token` | [Get access token](/api-reference/authentication#get-token) |
+| POST | `/v2/auth/refresh` | [Refresh access token](/api-reference/authentication#refresh-token) |
+
+### Invoices
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/v2/invoice` | [Create invoice](/api-reference/invoices#create-invoice) |
+| DELETE | `/v2/invoice/{id}` | [Cancel invoice](/api-reference/invoices#cancel-invoice) |
+
+### Payments
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/v2/payment/{id}` | [Get payment details](/api-reference/payments#get-payment) |
+| POST | `/v2/payment/check` | [Check payment status](/api-reference/payments#check-payment) |
+| POST | `/v2/payment/list` | [List payments](/api-reference/payments#list-payments) |
+| DELETE | `/v2/payment/cancel/{id}` | [Cancel payment](/api-reference/payments#cancel-payment) |
+| DELETE | `/v2/payment/refund/{id}` | [Refund payment](/api-reference/payments#refund-payment) |
+
+### Ebarimt
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/v2/ebarimt_v3/create` | [Create ebarimt](/api-reference/ebarimt#create-ebarimt) |
+| DELETE | `/v2/ebarimt_v3/{id}` | [Cancel ebarimt](/api-reference/ebarimt#cancel-ebarimt) |
+
+## Common Response Codes
+
+| Status Code | Description |
+|---|---|
+| 200 | Success |
+| 400 | Bad request (invalid parameters) |
+| 401 | Unauthorized (invalid or expired token) |
+| 403 | Forbidden (insufficient permissions) |
+| 404 | Resource not found |
+| 500 | Internal server error |
+
+## Error Response Format
+
+All error responses follow this format:
+
+```json
+{
+  "error_code": "ERROR_CODE_STRING",
+  "message": "Human-readable error description"
+}
+```
+
+See [Error Codes](/error-codes) for a complete list of error codes.

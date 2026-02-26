@@ -1,0 +1,208 @@
+# PHP SDK
+
+PHP SDK for the QPay V2 payment gateway API. Provides a clean, type-safe interface with automatic token management, Guzzle-based HTTP, and comprehensive error handling.
+
+- **Packagist**: [usukhbayar/qpay-php](https://packagist.org/packages/usukhbayar/qpay-php)
+- **GitHub**: [github.com/qpay-sdk/qpay-php](https://github.com/qpay-sdk/qpay-php)
+- **Requirements**: PHP 8.1+, Guzzle HTTP 7.0+
+
+## Installation
+
+```bash
+composer require usukhbayar/qpay-php
+```
+
+## Quick Start
+
+```php
+use QPay\Config;
+use QPay\QPayClient;
+use QPay\Models\CreateSimpleInvoiceRequest;
+use QPay\Exceptions\QPayException;
+
+// Configure from environment variables
+$config = Config::fromEnv();
+$client = new QPayClient($config);
+
+// Or configure manually
+$config = new Config(
+    baseUrl: 'https://merchant.qpay.mn',
+    username: 'YOUR_USERNAME',
+    password: 'YOUR_PASSWORD',
+    invoiceCode: 'YOUR_INVOICE_CODE',
+    callbackUrl: 'https://yoursite.com/callback',
+);
+$client = new QPayClient($config);
+
+try {
+    $invoice = $client->createSimpleInvoice(new CreateSimpleInvoiceRequest(
+        invoiceCode: $config->invoiceCode,
+        senderInvoiceNo: 'ORDER-001',
+        invoiceReceiverCode: 'terminal',
+        invoiceDescription: 'Payment for Order #001',
+        amount: 10000.0,
+        callbackUrl: $config->callbackUrl,
+    ));
+
+    echo $invoice->invoiceId;
+    echo $invoice->qPayShortUrl;
+    echo $invoice->qrImage;
+} catch (QPayException $e) {
+    echo "Error: {$e->errorCode} - {$e->errorMessage}";
+}
+```
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description |
+|---|---|
+| `QPAY_BASE_URL` | QPay API base URL (e.g. `https://merchant.qpay.mn`) |
+| `QPAY_USERNAME` | Merchant username |
+| `QPAY_PASSWORD` | Merchant password |
+| `QPAY_INVOICE_CODE` | Default invoice code |
+| `QPAY_CALLBACK_URL` | Payment callback URL |
+
+```php
+$config = Config::fromEnv();
+```
+
+### Manual Configuration
+
+```php
+$config = new Config(
+    baseUrl: 'https://merchant.qpay.mn',
+    username: 'YOUR_USERNAME',
+    password: 'YOUR_PASSWORD',
+    invoiceCode: 'YOUR_INVOICE_CODE',
+    callbackUrl: 'https://yoursite.com/callback',
+);
+```
+
+## Usage
+
+### Create Simple Invoice
+
+```php
+use QPay\Models\CreateSimpleInvoiceRequest;
+
+$invoice = $client->createSimpleInvoice(new CreateSimpleInvoiceRequest(
+    invoiceCode: 'YOUR_INVOICE_CODE',
+    senderInvoiceNo: 'ORDER-002',
+    invoiceReceiverCode: 'terminal',
+    invoiceDescription: 'Simple payment',
+    amount: 5000.0,
+    callbackUrl: 'https://yoursite.com/callback',
+));
+```
+
+### Check Payment
+
+```php
+use QPay\Models\PaymentCheckRequest;
+
+$result = $client->checkPayment(new PaymentCheckRequest(
+    objectType: 'INVOICE',
+    objectId: 'INVOICE_ID',
+    pageNumber: 1,
+    pageLimit: 10,
+));
+
+echo $result->count;
+echo $result->paidAmount;
+
+foreach ($result->rows as $row) {
+    echo "{$row['payment_id']}: {$row['payment_status']} ({$row['payment_amount']})";
+}
+```
+
+### List Payments
+
+```php
+use QPay\Models\PaymentListRequest;
+
+$result = $client->listPayments(new PaymentListRequest(
+    objectType: 'INVOICE',
+    objectId: 'INVOICE_ID',
+    startDate: '2026-01-01',
+    endDate: '2026-01-31',
+    pageNumber: 1,
+    pageLimit: 20,
+));
+
+echo $result->count;
+
+foreach ($result->rows as $row) {
+    echo "{$row['payment_id']}: {$row['payment_amount']} {$row['payment_currency']}";
+}
+```
+
+### Create Ebarimt
+
+```php
+use QPay\Models\CreateEbarimtRequest;
+
+$ebarimt = $client->createEbarimt(new CreateEbarimtRequest(
+    paymentId: 'PAYMENT_ID',
+    ebarimtReceiverType: 'citizen',
+    ebarimtReceiver: 'AA12345678',
+    districtCode: '01',
+));
+
+echo $ebarimt->id;
+echo $ebarimt->ebarimtQrData;
+echo $ebarimt->ebarimtLottery;
+```
+
+## Error Handling
+
+```php
+use QPay\Exceptions\QPayException;
+
+try {
+    $client->createSimpleInvoice($request);
+} catch (QPayException $e) {
+    echo $e->statusCode;    // HTTP status code
+    echo $e->errorCode;     // QPay error code string
+    echo $e->errorMessage;  // Human-readable error message
+    echo $e->rawBody;       // Raw response body
+}
+```
+
+### Error Code Constants
+
+```php
+use QPay\Exceptions\QPayException;
+
+try {
+    $client->cancelInvoice('inv_123');
+} catch (QPayException $e) {
+    match ($e->errorCode) {
+        QPayException::INVOICE_NOTFOUND => handleNotFound(),
+        QPayException::INVOICE_ALREADY_CANCELED => handleAlreadyCancelled(),
+        QPayException::INVOICE_PAID => handleAlreadyPaid(),
+        QPayException::AUTHENTICATION_FAILED => handleAuthError(),
+        QPayException::PERMISSION_DENIED => handlePermissionDenied(),
+        default => handleUnknownError($e),
+    };
+}
+```
+
+## API Reference
+
+| Method | Parameters | Returns | Description |
+|---|---|---|---|
+| `getToken()` | - | `TokenResponse` | Authenticate and get token pair |
+| `refreshTokenRequest()` | - | `TokenResponse` | Refresh the access token |
+| `createInvoice()` | `CreateInvoiceRequest` | `InvoiceResponse` | Create invoice with full options |
+| `createSimpleInvoice()` | `CreateSimpleInvoiceRequest` | `InvoiceResponse` | Create invoice with minimal fields |
+| `createEbarimtInvoice()` | `CreateEbarimtInvoiceRequest` | `InvoiceResponse` | Create invoice with tax info |
+| `cancelInvoice()` | `string $invoiceId` | `void` | Cancel an invoice |
+| `getPayment()` | `string $paymentId` | `PaymentDetail` | Get payment details |
+| `checkPayment()` | `PaymentCheckRequest` | `PaymentCheckResponse` | Check payment status |
+| `listPayments()` | `PaymentListRequest` | `PaymentListResponse` | List payments |
+| `cancelPayment()` | `string, PaymentCancelRequest` | `void` | Cancel a card payment |
+| `refundPayment()` | `string, PaymentRefundRequest` | `void` | Refund a card payment |
+| `createEbarimt()` | `CreateEbarimtRequest` | `EbarimtResponse` | Create tax receipt |
+| `cancelEbarimt()` | `string $paymentId` | `EbarimtResponse` | Cancel tax receipt |

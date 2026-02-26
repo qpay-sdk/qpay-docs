@@ -1,0 +1,246 @@
+# Dart / Flutter SDK
+
+A Dart/Flutter client library for the QPay V2 API with automatic token management, strong typing, and comprehensive error handling. Works with Dart CLI apps and Flutter.
+
+- **pub.dev**: [qpay](https://pub.dev/packages/qpay)
+- **GitHub**: [github.com/qpay-sdk/qpay-dart](https://github.com/qpay-sdk/qpay-dart)
+
+## Installation
+
+### Dart
+
+```bash
+dart pub add qpay
+```
+
+### Flutter
+
+```bash
+flutter pub add qpay
+```
+
+Or add it manually to your `pubspec.yaml`:
+
+```yaml
+dependencies:
+  qpay: ^1.0.0
+```
+
+## Quick Start
+
+```dart
+import 'package:qpay/qpay.dart';
+
+void main() async {
+  final client = QPayClient(QPayConfig(
+    baseUrl: 'https://merchant.qpay.mn',
+    username: 'YOUR_USERNAME',
+    password: 'YOUR_PASSWORD',
+    invoiceCode: 'YOUR_INVOICE_CODE',
+    callbackUrl: 'https://yourapp.com/callback',
+  ));
+
+  try {
+    final invoice = await client.createSimpleInvoice(CreateSimpleInvoiceRequest(
+      invoiceCode: 'YOUR_INVOICE_CODE',
+      senderInvoiceNo: 'INV-001',
+      invoiceReceiverCode: 'terminal',
+      invoiceDescription: 'Order #001',
+      amount: 10000,
+      callbackUrl: 'https://yourapp.com/callback',
+    ));
+
+    print('Invoice ID: ${invoice.invoiceId}');
+    print('QR Image: ${invoice.qrImage}');
+    print('Short URL: ${invoice.qPayShortUrl}');
+  } on QPayException catch (e) {
+    print('QPay error: ${e.code} - ${e.message}');
+  } finally {
+    client.close();
+  }
+}
+```
+
+## Configuration
+
+### Direct Configuration
+
+```dart
+const config = QPayConfig(
+  baseUrl: 'https://merchant.qpay.mn',
+  username: 'YOUR_USERNAME',
+  password: 'YOUR_PASSWORD',
+  invoiceCode: 'YOUR_INVOICE_CODE',
+  callbackUrl: 'https://yourapp.com/callback',
+);
+```
+
+### From Environment Variables
+
+For server-side Dart applications:
+
+```dart
+final config = QPayConfig.fromEnvironment();
+```
+
+| Variable | Description |
+|---|---|
+| `QPAY_BASE_URL` | QPay API base URL |
+| `QPAY_USERNAME` | QPay merchant username |
+| `QPAY_PASSWORD` | QPay merchant password |
+| `QPAY_INVOICE_CODE` | Default invoice code |
+| `QPAY_CALLBACK_URL` | Payment callback URL |
+
+## Usage
+
+### Create Simple Invoice
+
+```dart
+final invoice = await client.createSimpleInvoice(CreateSimpleInvoiceRequest(
+  invoiceCode: 'YOUR_INVOICE_CODE',
+  senderInvoiceNo: 'INV-001',
+  invoiceReceiverCode: 'terminal',
+  invoiceDescription: 'Coffee x2',
+  amount: 12000,
+  callbackUrl: 'https://yourapp.com/callback',
+));
+
+print('Invoice ID: ${invoice.invoiceId}');
+
+for (final url in invoice.urls) {
+  print('${url.name}: ${url.link}');
+}
+```
+
+### Check Payment
+
+```dart
+final result = await client.checkPayment(PaymentCheckRequest(
+  objectType: 'INVOICE',
+  objectId: 'invoice-id',
+));
+
+if (result.count > 0) {
+  print('Paid amount: ${result.paidAmount}');
+  for (final row in result.rows) {
+    print('Payment ${row.paymentId}: ${row.paymentStatus}');
+  }
+}
+```
+
+### List Payments
+
+```dart
+final payments = await client.listPayments(PaymentListRequest(
+  objectType: 'INVOICE',
+  objectId: 'invoice-id',
+  startDate: '2025-01-01',
+  endDate: '2025-12-31',
+  offset: Offset(pageNumber: 1, pageLimit: 20),
+));
+
+print('Total: ${payments.count}');
+for (final item in payments.rows) {
+  print('${item.paymentId}: ${item.paymentAmount} ${item.paymentCurrency}');
+}
+```
+
+### Create Ebarimt
+
+```dart
+final ebarimt = await client.createEbarimt(CreateEbarimtRequest(
+  paymentId: 'payment-id',
+  ebarimtReceiverType: 'INDIVIDUAL',
+  ebarimtReceiver: '99001122',
+  districtCode: 'UB01',
+));
+
+print('Ebarimt ID: ${ebarimt.id}');
+print('Lottery: ${ebarimt.ebarimtLottery}');
+print('QR Data: ${ebarimt.ebarimtQrData}');
+```
+
+## Error Handling
+
+```dart
+try {
+  await client.cancelInvoice('nonexistent-id');
+} on QPayException catch (e) {
+  print('Status: ${e.statusCode}');
+  print('Code: ${e.code}');
+  print('Message: ${e.message}');
+  print('Body: ${e.rawBody}');
+
+  if (e.code == QPayException.invoiceNotFound) {
+    print('Invoice does not exist');
+  } else if (e.code == QPayException.invoicePaid) {
+    print('Invoice has already been paid');
+  }
+}
+```
+
+## Flutter Integration
+
+### Display QR Code
+
+```dart
+import 'dart:convert';
+import 'package:flutter/material.dart';
+
+Widget buildQrImage(InvoiceResponse invoice) {
+  final bytes = base64Decode(invoice.qrImage);
+  return Image.memory(bytes);
+}
+```
+
+### Open Bank App Deep Links
+
+```dart
+import 'package:url_launcher/url_launcher.dart';
+
+Future<void> openBankApp(Deeplink deeplink) async {
+  final uri = Uri.parse(deeplink.link);
+  if (await canLaunchUrl(uri)) {
+    await launchUrl(uri);
+  }
+}
+```
+
+### Payment Polling
+
+```dart
+Future<bool> waitForPayment(QPayClient client, String invoiceId) async {
+  for (var i = 0; i < 60; i++) {
+    await Future.delayed(Duration(seconds: 5));
+
+    final result = await client.checkPayment(PaymentCheckRequest(
+      objectType: 'INVOICE',
+      objectId: invoiceId,
+    ));
+
+    if (result.count > 0) {
+      return true; // Payment received
+    }
+  }
+  return false; // Timeout after 5 minutes
+}
+```
+
+## API Reference
+
+| Method | Description |
+|---|---|
+| `getToken()` | Authenticate and get a new token pair |
+| `refreshToken()` | Refresh the current access token |
+| `createInvoice(request)` | Create a full invoice with all options |
+| `createSimpleInvoice(request)` | Create a simple invoice with minimal fields |
+| `createEbarimtInvoice(request)` | Create an invoice with ebarimt (tax) info |
+| `cancelInvoice(invoiceId)` | Cancel an existing invoice |
+| `getPayment(paymentId)` | Get payment details by ID |
+| `checkPayment(request)` | Check if a payment has been made |
+| `listPayments(request)` | List payments with filters and pagination |
+| `cancelPayment(paymentId, request)` | Cancel a card payment |
+| `refundPayment(paymentId, request)` | Refund a card payment |
+| `createEbarimt(request)` | Create an electronic tax receipt |
+| `cancelEbarimt(paymentId)` | Cancel an electronic tax receipt |
+| `close()` | Close the underlying HTTP client |

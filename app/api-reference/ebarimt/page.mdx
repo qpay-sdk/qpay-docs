@@ -1,0 +1,138 @@
+# Ebarimt
+
+Ebarimt is Mongolia's electronic tax receipt system. After a payment is completed, you can create an ebarimt to issue a tax receipt for the transaction.
+
+## Create Ebarimt
+
+**`POST /v2/ebarimt_v3/create`**
+
+Creates an ebarimt (electronic tax receipt) for a completed payment.
+
+### Request Body
+
+```json
+{
+  "payment_id": "payment-id-here",
+  "ebarimt_receiver_type": "83",
+  "ebarimt_receiver": "",
+  "district_code": "34",
+  "classification_code": ""
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `payment_id` | string | Yes | The payment ID to issue a receipt for |
+| `ebarimt_receiver_type` | string | Yes | Receipt type: `"83"` for individual, `"84"` for organization |
+| `ebarimt_receiver` | string | No | Organization register number (required when type is `"84"`) |
+| `district_code` | string | No | District code for tax purposes |
+| `classification_code` | string | No | Classification code |
+
+### Receiver Types
+
+| Type | Description |
+|---|---|
+| `"83"` | Individual (citizen) -- no register number required |
+| `"84"` | Organization (company) -- requires register number in `ebarimt_receiver` |
+
+### Response
+
+```json
+{
+  "id": "ebarimt-abc123",
+  "ebarimt_by": "...",
+  "ebarimt_receiver_type": "83",
+  "ebarimt_receiver": "",
+  "amount": "50000.00",
+  "vat_amount": "5000.00",
+  "city_tax_amount": "0.00",
+  "ebarimt_qr_data": "qr_data_string...",
+  "ebarimt_lottery": "AB12345678",
+  "barimt_status": "CREATED",
+  "barimt_status_date": "2026-02-26T10:00:00",
+  "status": true,
+  "barimt_items": [
+    {
+      "name": "Product A",
+      "amount": "50000.00",
+      "barcode": "...",
+      "measure_unit": "unit",
+      "quantity": "1",
+      "unit_price": "50000.00",
+      "vat": "5000.00",
+      "city_tax": "0.00"
+    }
+  ],
+  "barimt_transactions": [...],
+  "barimt_histories": [
+    {
+      "status": "CREATED",
+      "status_date": "2026-02-26T10:00:00"
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Unique ebarimt identifier |
+| `ebarimt_by` | string | Issuing entity |
+| `ebarimt_receiver_type` | string | Receiver type (`"83"` or `"84"`) |
+| `ebarimt_receiver` | string | Receiver register number (for organizations) |
+| `amount` | string | Total amount |
+| `vat_amount` | string | VAT amount |
+| `city_tax_amount` | string | City tax amount |
+| `ebarimt_qr_data` | string | QR code data for the receipt |
+| `ebarimt_lottery` | string | Lottery number for the receipt |
+| `barimt_status` | string | Receipt status (`CREATED`, `CANCELLED`) |
+| `barimt_status_date` | string | Status timestamp |
+| `status` | boolean | Whether the receipt is active |
+| `barimt_items` | array | Line items on the receipt |
+| `barimt_transactions` | array | Related transactions |
+| `barimt_histories` | array | Status change history |
+
+### Error Codes
+
+| Code | Description |
+|---|---|
+| `PAYMENT_NOTFOUND` | Payment does not exist |
+| `PAYMENT_NOT_PAID` | Payment has not been completed |
+| `EBARIMT_NOT_REGISTERED` | Ebarimt service not registered |
+
+---
+
+## Cancel Ebarimt
+
+**`DELETE /v2/ebarimt_v3/{id}`**
+
+Cancels an existing ebarimt (electronic tax receipt) by payment ID.
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `id` | string | The payment ID associated with the ebarimt |
+
+### Request
+
+No request body.
+
+### Response
+
+```json
+{
+  "id": "ebarimt-abc123",
+  "ebarimt_by": "...",
+  "barimt_status": "CANCELLED",
+  "barimt_status_date": "2026-02-26T11:00:00",
+  "status": true
+}
+```
+
+### Error Codes
+
+| Code | Description |
+|---|---|
+| `PAYMENT_NOTFOUND` | Payment does not exist |
+| `EBARIMT_NOT_REGISTERED` | Ebarimt not found for this payment |
+| `EBARIMT_CANCEL_NOTSUPPERDED` | Ebarimt cancellation not supported |

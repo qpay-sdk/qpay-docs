@@ -1,0 +1,180 @@
+# Error Codes
+
+Complete reference of all QPay V2 API error codes. Each SDK provides these as named constants for reliable error matching.
+
+## Error Response Format
+
+All API errors return a JSON response with the following structure:
+
+```json
+{
+  "error_code": "ERROR_CODE_STRING",
+  "message": "Human-readable error description"
+}
+```
+
+The HTTP status code is also included in the response headers. SDK error types expose the status code, error code, message, and raw response body.
+
+## Authentication Errors
+
+| Error Code | Description |
+|---|---|
+| `AUTHENTICATION_FAILED` | Invalid username or password. Check your credentials. |
+| `NO_CREDENDIALS` | Missing credentials. Basic Auth header is required. |
+| `PERMISSION_DENIED` | Insufficient permissions for this operation. |
+
+## Invoice Errors
+
+| Error Code | Description |
+|---|---|
+| `INVOICE_NOTFOUND` | Invoice does not exist. The invoice ID is invalid or the invoice was deleted. |
+| `INVOICE_PAID` | Invoice has already been paid. Paid invoices cannot be cancelled. |
+| `INVOICE_ALREADY_CANCELED` | Invoice was already cancelled. |
+| `INVOICE_CODE_INVALID` | Invalid invoice code. Check your merchant invoice code. |
+| `INVOICE_CODE_REGISTERED` | Invoice code is already registered. |
+| `INVOICE_LINE_REQUIRED` | Invoice lines are required. Ebarimt invoices must include at least one line item. |
+| `INVOICE_RECEIVER_DATA_REQUIRED` | Invoice receiver data is required. |
+| `INVOICE_RECEIVER_DATA_EMAIL_REQUIRED` | Invoice receiver email is required. |
+| `INVOICE_RECEIVER_DATA_PHONE_REQUIRED` | Invoice receiver phone is required. |
+| `INVOICE_RECEIVER_DATA_ADDRESS_REQUIRED` | Invoice receiver address is required. |
+
+## Payment Errors
+
+| Error Code | Description |
+|---|---|
+| `PAYMENT_NOTFOUND` | Payment does not exist. The payment ID is invalid. |
+| `PAYMENT_NOT_PAID` | Payment has not been completed. The payment is still pending. |
+| `PAYMENT_ALREADY_CANCELED` | Payment was already cancelled. |
+
+## Amount Errors
+
+| Error Code | Description |
+|---|---|
+| `INVALID_AMOUNT` | Invalid payment amount. Amount must be a positive number. |
+| `MIN_AMOUNT_ERR` | Amount is below the minimum allowed amount. |
+| `MAX_AMOUNT_ERR` | Amount exceeds the maximum allowed amount. |
+
+## Merchant Errors
+
+| Error Code | Description |
+|---|---|
+| `MERCHANT_NOTFOUND` | Merchant not found. Check your merchant credentials. |
+| `MERCHANT_INACTIVE` | Merchant account is inactive. Contact QPay support. |
+| `MERCHANT_ALREADY_REGISTERED` | Merchant is already registered. |
+
+## Ebarimt Errors
+
+| Error Code | Description |
+|---|---|
+| `EBARIMT_NOT_REGISTERED` | Ebarimt service not registered for this merchant. |
+| `EBARIMT_CANCEL_NOTSUPPERDED` | Ebarimt cancellation is not supported for this receipt. |
+| `EBARIMT_QR_CODE_INVALID` | Invalid ebarimt QR code. |
+
+## Customer Errors
+
+| Error Code | Description |
+|---|---|
+| `CUSTOMER_NOTFOUND` | Customer not found. |
+| `CUSTOMER_DUPLICATE` | Duplicate customer entry. |
+| `CUSTOMER_REGISTER_INVALID` | Invalid customer register number. |
+
+## Client Errors
+
+| Error Code | Description |
+|---|---|
+| `CLIENT_NOTFOUND` | API client not found. |
+| `CLIENT_USERNAME_DUPLICATED` | Client username is already taken. |
+
+## Account and Terminal Errors
+
+| Error Code | Description |
+|---|---|
+| `BANK_ACCOUNT_NOTFOUND` | Bank account not found. |
+| `ACCOUNT_BANK_DUPLICATED` | Duplicate bank account. |
+| `ACCOUNT_SELECTION_INVALID` | Invalid account selection. |
+| `CARD_TERMINAL_NOTFOUND` | Card terminal not found. |
+| `P2P_TERMINAL_NOTFOUND` | P2P terminal not found. |
+
+## QR and Transaction Errors
+
+| Error Code | Description |
+|---|---|
+| `QRCODE_NOTFOUND` | QR code not found. |
+| `QRCODE_USED` | QR code has already been used. |
+| `QRACCOUNT_NOTFOUND` | QR account not found. |
+| `QRACCOUNT_INACTIVE` | QR account is inactive. |
+| `TRANSACTION_NOT_APPROVED` | Transaction was not approved. |
+| `TRANSACTION_REQUIRED` | Transaction data is required. |
+
+## Other Errors
+
+| Error Code | Description |
+|---|---|
+| `OBJECT_DATA_ERROR` | Invalid object data. |
+| `INVALID_OBJECT_TYPE` | Invalid object type. Use `"INVOICE"` for invoice-related queries. |
+| `INPUT_NOTFOUND` | Input not found. |
+| `INPUT_CODE_REGISTERED` | Input code is already registered. |
+| `INFORM_NOTFOUND` | Information not found. |
+| `SENDER_BRANCH_DATA_REQUIRED` | Sender branch data is required. |
+| `TAX_LINE_REQUIRED` | Tax line items are required. |
+| `TAX_PRODUCT_CODE_REQUIRED` | Tax product code is required for each line item. |
+| `BANK_MCC_ALREADY_ADDED` | Bank MCC code already added. |
+| `BANK_MCC_NOT_FOUND` | Bank MCC code not found. |
+| `MCC_NOTFOUND` | MCC code not found. |
+
+## Full Error Code Table
+
+| Error Code | Category |
+|---|---|
+| `ACCOUNT_BANK_DUPLICATED` | Account |
+| `ACCOUNT_SELECTION_INVALID` | Account |
+| `AUTHENTICATION_FAILED` | Authentication |
+| `BANK_ACCOUNT_NOTFOUND` | Account |
+| `BANK_MCC_ALREADY_ADDED` | Other |
+| `BANK_MCC_NOT_FOUND` | Other |
+| `CARD_TERMINAL_NOTFOUND` | Terminal |
+| `CLIENT_NOTFOUND` | Client |
+| `CLIENT_USERNAME_DUPLICATED` | Client |
+| `CUSTOMER_DUPLICATE` | Customer |
+| `CUSTOMER_NOTFOUND` | Customer |
+| `CUSTOMER_REGISTER_INVALID` | Customer |
+| `EBARIMT_CANCEL_NOTSUPPERDED` | Ebarimt |
+| `EBARIMT_NOT_REGISTERED` | Ebarimt |
+| `EBARIMT_QR_CODE_INVALID` | Ebarimt |
+| `INFORM_NOTFOUND` | Other |
+| `INPUT_CODE_REGISTERED` | Other |
+| `INPUT_NOTFOUND` | Other |
+| `INVALID_AMOUNT` | Amount |
+| `INVALID_OBJECT_TYPE` | Other |
+| `INVOICE_ALREADY_CANCELED` | Invoice |
+| `INVOICE_CODE_INVALID` | Invoice |
+| `INVOICE_CODE_REGISTERED` | Invoice |
+| `INVOICE_LINE_REQUIRED` | Invoice |
+| `INVOICE_NOTFOUND` | Invoice |
+| `INVOICE_PAID` | Invoice |
+| `INVOICE_RECEIVER_DATA_ADDRESS_REQUIRED` | Invoice |
+| `INVOICE_RECEIVER_DATA_EMAIL_REQUIRED` | Invoice |
+| `INVOICE_RECEIVER_DATA_PHONE_REQUIRED` | Invoice |
+| `INVOICE_RECEIVER_DATA_REQUIRED` | Invoice |
+| `MAX_AMOUNT_ERR` | Amount |
+| `MCC_NOTFOUND` | Other |
+| `MERCHANT_ALREADY_REGISTERED` | Merchant |
+| `MERCHANT_INACTIVE` | Merchant |
+| `MERCHANT_NOTFOUND` | Merchant |
+| `MIN_AMOUNT_ERR` | Amount |
+| `NO_CREDENDIALS` | Authentication |
+| `OBJECT_DATA_ERROR` | Other |
+| `P2P_TERMINAL_NOTFOUND` | Terminal |
+| `PAYMENT_ALREADY_CANCELED` | Payment |
+| `PAYMENT_NOT_PAID` | Payment |
+| `PAYMENT_NOTFOUND` | Payment |
+| `PERMISSION_DENIED` | Authentication |
+| `QRACCOUNT_INACTIVE` | QR |
+| `QRACCOUNT_NOTFOUND` | QR |
+| `QRCODE_NOTFOUND` | QR |
+| `QRCODE_USED` | QR |
+| `SENDER_BRANCH_DATA_REQUIRED` | Other |
+| `TAX_LINE_REQUIRED` | Tax |
+| `TAX_PRODUCT_CODE_REQUIRED` | Tax |
+| `TRANSACTION_NOT_APPROVED` | Transaction |
+| `TRANSACTION_REQUIRED` | Transaction |

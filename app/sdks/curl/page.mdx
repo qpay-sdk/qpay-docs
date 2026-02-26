@@ -1,0 +1,181 @@
+# cURL Examples
+
+A collection of ready-to-use cURL examples for the QPay V2 API. Each script demonstrates a specific API endpoint with proper authentication, request formatting, and documented response structures.
+
+- **GitHub**: [github.com/qpay-sdk/qpay-curl](https://github.com/qpay-sdk/qpay-curl)
+
+## Prerequisites
+
+- **curl** -- command-line HTTP client (pre-installed on macOS and most Linux distributions)
+- **jq** -- JSON processor, used by the auth helper to parse tokens
+
+```bash
+# macOS
+brew install jq
+
+# Ubuntu / Debian
+apt-get install jq
+```
+
+## Setup
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/qpay-sdk/qpay-curl.git
+   cd qpay-curl
+   ```
+
+2. Copy the example environment file and fill in your credentials:
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Edit `.env` with your actual values:
+   ```bash
+   QPAY_BASE_URL=https://merchant.qpay.mn
+   QPAY_USERNAME=your_username
+   QPAY_PASSWORD=your_password
+   QPAY_INVOICE_CODE=your_invoice_code
+   QPAY_CALLBACK_URL=https://your-domain.com/callback
+   ```
+
+4. Make all scripts executable:
+   ```bash
+   chmod +x helpers/*.sh examples/**/*.sh
+   ```
+
+## Quick Start
+
+```bash
+# Authenticate and export tokens
+source helpers/auth.sh
+
+# Verify the token is set
+echo "$ACCESS_TOKEN"
+
+# Now run any example
+./examples/invoice/create-simple.sh
+```
+
+## Usage
+
+### Get Token
+
+```bash
+source helpers/auth.sh
+```
+
+Response:
+```json
+{
+  "token_type": "Bearer",
+  "refresh_expires_in": 3600,
+  "refresh_token": "eyJ...",
+  "access_token": "eyJ...",
+  "expires_in": 600
+}
+```
+
+### Create Simple Invoice
+
+```bash
+source helpers/auth.sh
+./examples/invoice/create-simple.sh
+```
+
+Response:
+```json
+{
+  "invoice_id": "abc123...",
+  "qr_text": "...",
+  "qr_image": "base64_encoded_qr_image...",
+  "qPay_shortUrl": "https://qpay.mn/shorturl",
+  "urls": [
+    {
+      "name": "Khan Bank",
+      "description": "Khan Bank app",
+      "logo": "https://...",
+      "link": "https://..."
+    }
+  ]
+}
+```
+
+### Check Payment
+
+```bash
+source helpers/auth.sh
+INVOICE_ID="your_invoice_id" ./examples/payment/check-payment.sh
+```
+
+Response:
+```json
+{
+  "count": 1,
+  "paid_amount": 1000.00,
+  "rows": [
+    {
+      "payment_id": "...",
+      "payment_status": "PAID",
+      "payment_amount": "1000.00",
+      "payment_currency": "MNT",
+      "payment_wallet": "qpay"
+    }
+  ]
+}
+```
+
+### List Payments
+
+```bash
+source helpers/auth.sh
+INVOICE_ID="your_invoice_id" ./examples/payment/list-payments.sh
+```
+
+### Create Ebarimt
+
+```bash
+source helpers/auth.sh
+PAYMENT_ID="your_payment_id" ./examples/ebarimt/create-ebarimt.sh
+```
+
+Response:
+```json
+{
+  "id": "...",
+  "ebarimt_receiver_type": "83",
+  "amount": "1000.00",
+  "vat_amount": "100.00",
+  "ebarimt_qr_data": "...",
+  "ebarimt_lottery": "...",
+  "barimt_status": "CREATED"
+}
+```
+
+## Available Scripts
+
+| Script | Method | Path | Description |
+|---|---|---|---|
+| `helpers/auth.sh` | -- | -- | Auth helper (sources .env, exports tokens) |
+| `examples/auth/get-token.sh` | POST | `/v2/auth/token` | Get access token |
+| `examples/auth/refresh-token.sh` | POST | `/v2/auth/refresh` | Refresh access token |
+| `examples/invoice/create-invoice.sh` | POST | `/v2/invoice` | Create invoice (full) |
+| `examples/invoice/create-simple.sh` | POST | `/v2/invoice` | Create invoice (simple) |
+| `examples/invoice/cancel-invoice.sh` | DELETE | `/v2/invoice/{id}` | Cancel invoice |
+| `examples/payment/get-payment.sh` | GET | `/v2/payment/{id}` | Get payment details |
+| `examples/payment/check-payment.sh` | POST | `/v2/payment/check` | Check payment status |
+| `examples/payment/list-payments.sh` | POST | `/v2/payment/list` | List payments |
+| `examples/payment/cancel-payment.sh` | DELETE | `/v2/payment/cancel/{id}` | Cancel payment |
+| `examples/payment/refund-payment.sh` | DELETE | `/v2/payment/refund/{id}` | Refund payment |
+| `examples/ebarimt/create-ebarimt.sh` | POST | `/v2/ebarimt_v3/create` | Create ebarimt |
+| `examples/ebarimt/cancel-ebarimt.sh` | DELETE | `/v2/ebarimt_v3/{id}` | Cancel ebarimt |
+
+## Environment Variables
+
+| Variable | Description | Example |
+|---|---|---|
+| `QPAY_BASE_URL` | QPay API base URL | `https://merchant.qpay.mn` |
+| `QPAY_USERNAME` | QPay merchant username | `your_username` |
+| `QPAY_PASSWORD` | QPay merchant password | `your_password` |
+| `QPAY_INVOICE_CODE` | Default invoice code | `your_invoice_code` |
+| `QPAY_CALLBACK_URL` | URL that QPay calls after payment | `https://your-domain.com/callback` |

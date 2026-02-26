@@ -1,0 +1,220 @@
+# Invoices
+
+Invoices are the primary way to request payments through QPay. When you create an invoice, QPay generates a QR code and deep links that customers can use to pay via their banking apps.
+
+## Create Invoice
+
+**`POST /v2/invoice`**
+
+Creates an invoice. You can create three types of invoices:
+- **Simple invoice** -- minimal fields, quickest to set up
+- **Full invoice** -- all options including line items, branch data, and transaction details
+- **Ebarimt invoice** -- includes tax (ebarimt) information for electronic tax receipts
+
+### Request Body (Simple)
+
+```json
+{
+  "invoice_code": "YOUR_INVOICE_CODE",
+  "sender_invoice_no": "ORDER-001",
+  "invoice_receiver_code": "terminal",
+  "invoice_description": "Payment for Order #001",
+  "amount": 50000,
+  "callback_url": "https://yoursite.com/callback"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `invoice_code` | string | Yes | Your merchant invoice code |
+| `sender_invoice_no` | string | Yes | Your unique invoice/order number |
+| `invoice_receiver_code` | string | Yes | Receiver code (typically `"terminal"`) |
+| `invoice_description` | string | Yes | Human-readable description |
+| `amount` | number | Yes | Payment amount in MNT |
+| `callback_url` | string | Yes | URL for payment notifications |
+
+### Request Body (Full)
+
+Includes all fields from the simple invoice, plus:
+
+```json
+{
+  "invoice_code": "YOUR_INVOICE_CODE",
+  "sender_invoice_no": "ORDER-002",
+  "sender_branch_code": "BRANCH_01",
+  "sender_branch_data": {
+    "register": "REG001",
+    "name": "Main Branch",
+    "email": "branch@company.mn",
+    "phone": "77001234",
+    "address": {
+      "city": "Ulaanbaatar",
+      "district": "Khan-Uul",
+      "street": "Peace Avenue 123",
+      "building": "Tower A",
+      "apartment": "301",
+      "zipcode": "16000"
+    }
+  },
+  "sender_staff_data": {
+    "name": "Staff Name",
+    "email": "staff@company.mn",
+    "phone": "88001234"
+  },
+  "invoice_receiver_code": "terminal",
+  "invoice_receiver_data": {
+    "register": "AA12345678",
+    "name": "Customer Name",
+    "email": "customer@example.com",
+    "phone": "99001234"
+  },
+  "invoice_description": "Detailed invoice",
+  "enable_expiry": "true",
+  "allow_partial": false,
+  "minimum_amount": 10000,
+  "allow_exceed": false,
+  "maximum_amount": 100000,
+  "amount": 50000,
+  "callback_url": "https://yoursite.com/callback",
+  "note": "Additional notes",
+  "transactions": [
+    {
+      "description": "Payment transaction",
+      "amount": "50000",
+      "accounts": [
+        {
+          "account_bank_code": "050000",
+          "account_number": "1234567890",
+          "account_name": "Company Account",
+          "account_currency": "MNT",
+          "is_default": true
+        }
+      ]
+    }
+  ],
+  "lines": [
+    {
+      "tax_product_code": "TAX001",
+      "line_description": "Product A",
+      "line_quantity": "2",
+      "line_unit_price": "25000",
+      "note": "item note",
+      "discounts": [
+        { "description": "Discount", "amount": 1000 }
+      ],
+      "surcharges": [
+        { "description": "Service fee", "amount": 500 }
+      ],
+      "taxes": [
+        { "description": "VAT", "amount": 2500 }
+      ]
+    }
+  ]
+}
+```
+
+### Request Body (Ebarimt)
+
+For invoices with tax receipt information:
+
+```json
+{
+  "invoice_code": "YOUR_INVOICE_CODE",
+  "sender_invoice_no": "ORDER-003",
+  "invoice_receiver_code": "terminal",
+  "invoice_description": "Tax invoice",
+  "tax_type": "1",
+  "district_code": "34",
+  "callback_url": "https://yoursite.com/callback",
+  "lines": [
+    {
+      "tax_product_code": "TAX001",
+      "line_description": "Taxable Product",
+      "line_quantity": "1",
+      "line_unit_price": "75000",
+      "classification_code": "CLS001"
+    }
+  ]
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `tax_type` | string | Yes | Tax type code |
+| `district_code` | string | Yes | District code for tax purposes |
+| `lines` | array | Yes | Line items with tax product codes |
+
+### Response
+
+```json
+{
+  "invoice_id": "abc123-def456-ghi789",
+  "qr_text": "qpay_data_string...",
+  "qr_image": "base64_encoded_png_image...",
+  "qPay_shortUrl": "https://qpay.mn/s/abc123",
+  "urls": [
+    {
+      "name": "Khan Bank",
+      "description": "Khan Bank mobile app",
+      "logo": "https://qpay.mn/logos/khanbank.png",
+      "link": "khanbank://qpay?data=..."
+    },
+    {
+      "name": "Golomt Bank",
+      "description": "Golomt Bank mobile app",
+      "logo": "https://qpay.mn/logos/golomt.png",
+      "link": "golomtbank://qpay?data=..."
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `invoice_id` | string | Unique invoice identifier |
+| `qr_text` | string | QR code data as text |
+| `qr_image` | string | Base64-encoded PNG QR code image |
+| `qPay_shortUrl` | string | Short URL for payment |
+| `urls` | array | Deep links for mobile banking apps |
+
+### Error Codes
+
+| Code | Description |
+|---|---|
+| `INVOICE_CODE_INVALID` | Invalid invoice code |
+| `INVOICE_LINE_REQUIRED` | Invoice lines are required (for ebarimt invoices) |
+| `INVALID_AMOUNT` | Invalid payment amount |
+| `MIN_AMOUNT_ERR` | Amount below minimum |
+| `MAX_AMOUNT_ERR` | Amount exceeds maximum |
+| `MERCHANT_NOTFOUND` | Merchant not found |
+| `MERCHANT_INACTIVE` | Merchant account is inactive |
+
+---
+
+## Cancel Invoice
+
+**`DELETE /v2/invoice/{id}`**
+
+Cancels an existing invoice by its invoice ID. Only unpaid invoices can be cancelled.
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `id` | string | The invoice ID to cancel |
+
+### Request
+
+No request body.
+
+### Response
+
+HTTP 200 on success (empty body).
+
+### Error Codes
+
+| Code | Description |
+|---|---|
+| `INVOICE_NOTFOUND` | Invoice does not exist |
+| `INVOICE_ALREADY_CANCELED` | Invoice was already cancelled |
+| `INVOICE_PAID` | Invoice has been paid and cannot be cancelled |

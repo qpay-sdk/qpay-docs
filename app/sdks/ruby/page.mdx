@@ -1,0 +1,220 @@
+# Ruby SDK
+
+Ruby SDK for the QPay V2 payment gateway API. Provides a simple, idiomatic Ruby interface with automatic token management, typed request/response structs, and comprehensive error handling.
+
+- **RubyGems**: [qpay](https://rubygems.org/gems/qpay)
+- **GitHub**: [github.com/qpay-sdk/qpay-ruby](https://github.com/qpay-sdk/qpay-ruby)
+- **Requirements**: Ruby 3.0+, Faraday ~> 2.0
+
+## Installation
+
+Add to your Gemfile:
+
+```ruby
+gem "qpay"
+```
+
+Then run:
+
+```bash
+bundle install
+```
+
+Or install directly:
+
+```bash
+gem install qpay
+```
+
+## Quick Start
+
+```ruby
+require "qpay"
+
+# Configure from environment variables
+config = QPay::Config.from_env
+
+# Or configure manually
+config = QPay::Config.new(
+  base_url: "https://merchant.qpay.mn",
+  username: "YOUR_USERNAME",
+  password: "YOUR_PASSWORD",
+  invoice_code: "YOUR_INVOICE_CODE",
+  callback_url: "https://yoursite.com/payments/callback"
+)
+
+client = QPay::Client.new(config: config)
+
+invoice = client.create_simple_invoice(
+  QPay::CreateSimpleInvoiceRequest.new(
+    invoice_code: config.invoice_code,
+    sender_invoice_no: "ORDER-001",
+    invoice_receiver_code: "terminal",
+    invoice_description: "Payment for Order #001",
+    amount: 10_000,
+    callback_url: config.callback_url
+  )
+)
+
+puts invoice.invoice_id
+puts invoice.qpay_short_url
+puts invoice.qr_text
+```
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description |
+|---|---|
+| `QPAY_BASE_URL` | QPay API base URL (e.g., `https://merchant.qpay.mn`) |
+| `QPAY_USERNAME` | QPay merchant username |
+| `QPAY_PASSWORD` | QPay merchant password |
+| `QPAY_INVOICE_CODE` | Default invoice code |
+| `QPAY_CALLBACK_URL` | Payment callback URL |
+
+```ruby
+config = QPay::Config.from_env
+```
+
+### Manual Configuration
+
+```ruby
+config = QPay::Config.new(
+  base_url: "https://merchant.qpay.mn",
+  username: "YOUR_USERNAME",
+  password: "YOUR_PASSWORD",
+  invoice_code: "YOUR_INVOICE_CODE",
+  callback_url: "https://yoursite.com/callback"
+)
+```
+
+## Usage
+
+### Create Simple Invoice
+
+```ruby
+invoice = client.create_simple_invoice(
+  QPay::CreateSimpleInvoiceRequest.new(
+    invoice_code: "INV_CODE",
+    sender_invoice_no: "ORDER-002",
+    invoice_receiver_code: "terminal",
+    invoice_description: "Quick payment",
+    sender_branch_code: "BRANCH01",
+    amount: 5_000,
+    callback_url: "https://yoursite.com/callback"
+  )
+)
+```
+
+### Check Payment
+
+```ruby
+result = client.check_payment(
+  QPay::PaymentCheckRequest.new(
+    object_type: "INVOICE",
+    obj_id: "INVOICE_ID",
+    offset: QPay::Offset.new(page_number: 1, page_limit: 10)
+  )
+)
+
+puts result.count
+puts result.paid_amount
+
+result.rows.each do |row|
+  puts "#{row.payment_id}: #{row.payment_status} - #{row.payment_amount}"
+end
+```
+
+### List Payments
+
+```ruby
+payments = client.list_payments(
+  QPay::PaymentListRequest.new(
+    object_type: "INVOICE",
+    obj_id: "INVOICE_ID",
+    start_date: "2024-01-01",
+    end_date: "2024-12-31",
+    offset: QPay::Offset.new(page_number: 1, page_limit: 20)
+  )
+)
+
+puts payments.count
+
+payments.rows.each do |item|
+  puts "#{item.payment_id}: #{item.payment_amount} #{item.payment_currency} (#{item.payment_status})"
+end
+```
+
+### Create Ebarimt
+
+```ruby
+ebarimt = client.create_ebarimt(
+  QPay::CreateEbarimtRequest.new(
+    payment_id: "PAYMENT_ID",
+    ebarimt_receiver_type: "CITIZEN",
+    ebarimt_receiver: "AA12345678",
+    district_code: "001"
+  )
+)
+
+puts ebarimt.id
+puts ebarimt.ebarimt_qr_data
+puts ebarimt.ebarimt_lottery
+```
+
+## Error Handling
+
+All API errors raise `QPay::Error`, which is a subclass of `StandardError`:
+
+```ruby
+begin
+  client.create_simple_invoice(request)
+rescue QPay::Error => e
+  puts e.message      # "qpay: INVOICE_LINE_REQUIRED - ..."
+  puts e.status_code  # 400
+  puts e.code         # "INVOICE_LINE_REQUIRED"
+  puts e.raw_body     # Raw JSON response body
+end
+```
+
+### Error Code Constants
+
+```ruby
+rescue QPay::Error => e
+  case e.code
+  when QPay::AUTHENTICATION_FAILED
+    # Re-authenticate
+  when QPay::INVOICE_NOTFOUND
+    # Handle missing invoice
+  when QPay::INVOICE_PAID
+    # Invoice already paid
+  when QPay::PAYMENT_NOTFOUND
+    # Handle missing payment
+  when QPay::PAYMENT_ALREADY_CANCELED
+    # Payment was already canceled
+  when QPay::INVALID_AMOUNT
+    # Amount out of range
+  when QPay::PERMISSION_DENIED
+    # Access denied
+  end
+end
+```
+
+## API Reference
+
+| Method | Parameters | Returns | Description |
+|---|---|---|---|
+| `get_token` | -- | `TokenResponse` | Authenticate and get token pair |
+| `refresh_token` | -- | `TokenResponse` | Refresh access token |
+| `create_invoice` | `CreateInvoiceRequest` | `InvoiceResponse` | Create full invoice |
+| `create_simple_invoice` | `CreateSimpleInvoiceRequest` | `InvoiceResponse` | Create simple invoice |
+| `create_ebarimt_invoice` | `CreateEbarimtInvoiceRequest` | `InvoiceResponse` | Create invoice with tax info |
+| `cancel_invoice` | `invoice_id` (String) | `nil` | Cancel an invoice |
+| `get_payment` | `payment_id` (String) | `PaymentDetail` | Get payment details |
+| `check_payment` | `PaymentCheckRequest` | `PaymentCheckResponse` | Check payment status |
+| `list_payments` | `PaymentListRequest` | `PaymentListResponse` | List payments |
+| `cancel_payment` | `payment_id`, `request:` (optional) | `nil` | Cancel a payment |
+| `refund_payment` | `payment_id`, `request:` (optional) | `nil` | Refund a payment |
+| `create_ebarimt` | `CreateEbarimtRequest` | `EbarimtResponse` | Create tax receipt |
+| `cancel_ebarimt` | `payment_id` (String) | `EbarimtResponse` | Cancel tax receipt |

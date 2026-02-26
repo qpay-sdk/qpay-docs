@@ -1,0 +1,49 @@
+# SDKs
+
+QPay provides official SDKs for 11 languages. Each SDK is a standalone package with identical functionality, covering all QPay V2 API endpoints.
+
+## Common Features
+
+Every SDK includes:
+
+- **Automatic token management** -- Authentication tokens are obtained, cached, and refreshed transparently.
+- **Type-safe models** -- Strongly typed request and response objects.
+- **Error handling** -- Structured error types with QPay error codes.
+- **Full API coverage** -- Invoices, payments, and ebarimt operations.
+- **Environment variable support** -- Load configuration from `QPAY_*` environment variables.
+
+## Available SDKs
+
+| Language | Package | Install Command |
+|---|---|---|
+| [Go](/sdks/go) | `qpay-go` | `go get github.com/usukhbayar-boop/qpay-go` |
+| [JavaScript / TypeScript](/sdks/javascript) | `qpay-js` | `npm install qpay-js` |
+| [Python](/sdks/python) | `qpay-py` | `pip install qpay-py` |
+| [PHP](/sdks/php) | `qpay-php` | `composer require usukhbayar/qpay-php` |
+| [Java](/sdks/java) | `qpay-java` | Maven / Gradle |
+| [Ruby](/sdks/ruby) | `qpay` | `gem install qpay` |
+| [.NET (C#)](/sdks/dotnet) | `QPay` | `dotnet add package QPay` |
+| [Dart / Flutter](/sdks/dart) | `qpay` | `dart pub add qpay` |
+| [Swift](/sdks/swift) | `QPay` | Swift Package Manager |
+| [Rust](/sdks/rust) | `qpay` | `cargo add qpay` |
+| [cURL](/sdks/curl) | Shell scripts | No install needed |
+
+## API Coverage
+
+All SDKs implement the following operations:
+
+| Operation | Description |
+|---|---|
+| Get Token | Authenticate with QPay |
+| Refresh Token | Refresh an expired access token |
+| Create Invoice | Create a detailed invoice with all options |
+| Create Simple Invoice | Create an invoice with minimal fields |
+| Create Ebarimt Invoice | Create an invoice with tax information |
+| Cancel Invoice | Cancel an existing invoice |
+| Get Payment | Retrieve payment details |
+| Check Payment | Check if a payment has been made |
+| List Payments | List payments with filters and pagination |
+| Cancel Payment | Cancel a card payment |
+| Refund Payment | Refund a card payment |
+| Create Ebarimt | Create an electronic tax receipt |
+| Cancel Ebarimt | Cancel an electronic tax receipt |

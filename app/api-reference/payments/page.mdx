@@ -1,0 +1,279 @@
+# Payments
+
+Payment endpoints allow you to check payment status, retrieve payment details, list payments, and manage cancellations and refunds.
+
+## Get Payment
+
+**`GET /v2/payment/{id}`**
+
+Retrieves detailed information about a specific payment by its ID.
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `id` | string | The payment ID |
+
+### Response
+
+```json
+{
+  "payment_id": "pay-abc123",
+  "payment_status": "PAID",
+  "payment_fee": "0.00",
+  "payment_amount": "50000.00",
+  "payment_currency": "MNT",
+  "payment_date": "2026-02-26T10:00:00",
+  "payment_wallet": "qpay",
+  "transaction_type": "P2P",
+  "object_type": "INVOICE",
+  "object_id": "inv-abc123",
+  "card_transactions": [],
+  "p2p_transactions": [
+    {
+      "transaction_bank_code": "050000",
+      "account_bank_code": "050000",
+      "account_bank_name": "Khan Bank",
+      "account_number": "1234567890",
+      "status": "SUCCESS",
+      "amount": "50000.00",
+      "currency": "MNT",
+      "settlement_status": "SETTLED"
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `payment_id` | string | Unique payment identifier |
+| `payment_status` | string | Payment status (`PAID`, `PENDING`, etc.) |
+| `payment_fee` | string | Transaction fee |
+| `payment_amount` | string | Payment amount |
+| `payment_currency` | string | Currency code (e.g., `MNT`) |
+| `payment_date` | string | Payment timestamp |
+| `payment_wallet` | string | Payment wallet name |
+| `transaction_type` | string | Transaction type (`P2P`, `CARD`, etc.) |
+| `object_type` | string | Object type (`INVOICE`) |
+| `object_id` | string | Related object ID (invoice ID) |
+| `card_transactions` | array | Card transaction details |
+| `p2p_transactions` | array | P2P (bank transfer) transaction details |
+
+### Error Codes
+
+| Code | Description |
+|---|---|
+| `PAYMENT_NOTFOUND` | Payment does not exist |
+
+---
+
+## Check Payment
+
+**`POST /v2/payment/check`**
+
+Checks if a payment has been made for a given invoice. This is the primary endpoint for verifying payment status after creating an invoice.
+
+### Request Body
+
+```json
+{
+  "object_type": "INVOICE",
+  "object_id": "invoice-id-here",
+  "offset": {
+    "page_number": 1,
+    "page_limit": 10
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `object_type` | string | Yes | Object type (typically `"INVOICE"`) |
+| `object_id` | string | Yes | The invoice ID to check |
+| `offset` | object | No | Pagination parameters |
+| `offset.page_number` | number | No | Page number (default: 1) |
+| `offset.page_limit` | number | No | Items per page (default: 10) |
+
+### Response
+
+```json
+{
+  "count": 1,
+  "paid_amount": 50000.00,
+  "rows": [
+    {
+      "payment_id": "pay-abc123",
+      "payment_status": "PAID",
+      "payment_amount": "50000.00",
+      "trx_fee": "0.00",
+      "payment_currency": "MNT",
+      "payment_wallet": "qpay",
+      "payment_type": "P2P",
+      "card_transactions": [],
+      "p2p_transactions": [
+        {
+          "transaction_bank_code": "050000",
+          "account_bank_name": "Khan Bank",
+          "account_number": "1234567890",
+          "status": "SUCCESS",
+          "amount": "50000.00",
+          "currency": "MNT"
+        }
+      ]
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `count` | number | Total number of payments found |
+| `paid_amount` | number | Total paid amount |
+| `rows` | array | Array of payment details |
+
+### Error Codes
+
+| Code | Description |
+|---|---|
+| `INVALID_OBJECT_TYPE` | Invalid object type |
+
+---
+
+## List Payments
+
+**`POST /v2/payment/list`**
+
+Returns a paginated list of payments matching the given criteria. You can filter by object type, object ID, and date range.
+
+### Request Body
+
+```json
+{
+  "object_type": "INVOICE",
+  "object_id": "invoice-id-here",
+  "start_date": "2026-01-01",
+  "end_date": "2026-12-31",
+  "offset": {
+    "page_number": 1,
+    "page_limit": 20
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `object_type` | string | Yes | Object type (typically `"INVOICE"`) |
+| `object_id` | string | Yes | The invoice ID |
+| `start_date` | string | Yes | Start date (YYYY-MM-DD) |
+| `end_date` | string | Yes | End date (YYYY-MM-DD) |
+| `offset` | object | Yes | Pagination parameters |
+| `offset.page_number` | number | Yes | Page number |
+| `offset.page_limit` | number | Yes | Items per page |
+
+### Response
+
+```json
+{
+  "count": 2,
+  "rows": [
+    {
+      "payment_id": "pay-abc123",
+      "payment_date": "2026-02-26T10:00:00",
+      "payment_status": "PAID",
+      "payment_fee": "0.00",
+      "payment_amount": "50000.00",
+      "payment_currency": "MNT",
+      "payment_wallet": "qpay",
+      "payment_name": "...",
+      "payment_description": "...",
+      "object_type": "INVOICE",
+      "object_id": "inv-abc123"
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `count` | number | Total number of matching payments |
+| `rows` | array | Array of payment list items |
+
+---
+
+## Cancel Payment
+
+**`DELETE /v2/payment/cancel/{id}`**
+
+Cancels a payment by its payment ID. Only applicable to card transactions.
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `id` | string | The payment ID to cancel |
+
+### Request Body (Optional)
+
+```json
+{
+  "callback_url": "https://yoursite.com/cancel-callback",
+  "note": "Reason for cancellation"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `callback_url` | string | No | Callback URL for cancellation status |
+| `note` | string | No | Reason for cancellation |
+
+### Response
+
+HTTP 200 on success (empty body).
+
+### Error Codes
+
+| Code | Description |
+|---|---|
+| `PAYMENT_NOTFOUND` | Payment does not exist |
+| `PAYMENT_NOT_PAID` | Payment has not been completed |
+| `PAYMENT_ALREADY_CANCELED` | Payment was already cancelled |
+
+---
+
+## Refund Payment
+
+**`DELETE /v2/payment/refund/{id}`**
+
+Refunds a payment by its payment ID. Only applicable to card transactions.
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `id` | string | The payment ID to refund |
+
+### Request Body (Optional)
+
+```json
+{
+  "callback_url": "https://yoursite.com/refund-callback",
+  "note": "Reason for refund"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `callback_url` | string | No | Callback URL for refund status |
+| `note` | string | No | Reason for refund |
+
+### Response
+
+HTTP 200 on success (empty body).
+
+### Error Codes
+
+| Code | Description |
+|---|---|
+| `PAYMENT_NOTFOUND` | Payment does not exist |
+| `PAYMENT_NOT_PAID` | Payment has not been completed |
+| `PAYMENT_ALREADY_CANCELED` | Payment was already cancelled |

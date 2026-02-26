@@ -1,0 +1,210 @@
+# Go SDK
+
+Go SDK for the QPay V2 API. Provides a simple, type-safe client for creating invoices, managing payments, and handling ebarimt (electronic tax receipts).
+
+- **GitHub**: [github.com/usukhbayar-boop/qpay-go](https://github.com/usukhbayar-boop/qpay-go)
+
+## Installation
+
+```bash
+go get github.com/usukhbayar-boop/qpay-go
+```
+
+## Quick Start
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	qpay "github.com/usukhbayar-boop/qpay-go"
+)
+
+func main() {
+	// Load config from environment variables
+	cfg, err := qpay.LoadConfigFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Create client
+	client := qpay.NewClient(cfg)
+
+	// Create a simple invoice
+	invoice, err := client.CreateSimpleInvoice(context.Background(), &qpay.CreateSimpleInvoiceRequest{
+		InvoiceCode:         cfg.InvoiceCode,
+		SenderInvoiceNo:     "ORDER-001",
+		InvoiceReceiverCode: "terminal",
+		InvoiceDescription:  "Payment for Order #001",
+		Amount:              50000,
+		CallbackURL:         cfg.CallbackURL,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Invoice ID: %s\n", invoice.InvoiceID)
+	fmt.Printf("QR Image:   %s\n", invoice.QRImage)
+	fmt.Printf("Short URL:  %s\n", invoice.QPay_ShortURL)
+}
+```
+
+## Configuration
+
+### Environment Variables
+
+Set these environment variables and use `LoadConfigFromEnv()`:
+
+| Variable | Description |
+|---|---|
+| `QPAY_BASE_URL` | QPay API base URL (e.g. `https://merchant.qpay.mn`) |
+| `QPAY_USERNAME` | QPay merchant username |
+| `QPAY_PASSWORD` | QPay merchant password |
+| `QPAY_INVOICE_CODE` | Default invoice code |
+| `QPAY_CALLBACK_URL` | Payment callback URL |
+
+```go
+cfg, err := qpay.LoadConfigFromEnv()
+if err != nil {
+    log.Fatal(err)
+}
+client := qpay.NewClient(cfg)
+```
+
+### Manual Configuration
+
+```go
+client := qpay.NewClient(&qpay.Config{
+    BaseURL:     "https://merchant.qpay.mn",
+    Username:    "your_username",
+    Password:    "your_password",
+    InvoiceCode: "YOUR_INVOICE_CODE",
+    CallbackURL: "https://yoursite.com/qpay/callback",
+})
+```
+
+### Custom HTTP Client
+
+```go
+httpClient := &http.Client{
+    Timeout: 60 * time.Second,
+}
+client := qpay.NewClientWithHTTPClient(cfg, httpClient)
+```
+
+## Usage
+
+### Create Simple Invoice
+
+```go
+invoice, err := client.CreateSimpleInvoice(ctx, &qpay.CreateSimpleInvoiceRequest{
+    InvoiceCode:         "YOUR_CODE",
+    SenderInvoiceNo:     "ORDER-001",
+    InvoiceReceiverCode: "terminal",
+    InvoiceDescription:  "Payment for order",
+    Amount:              50000,
+    CallbackURL:         "https://yoursite.com/callback",
+})
+```
+
+### Check Payment
+
+```go
+result, err := client.CheckPayment(ctx, &qpay.PaymentCheckRequest{
+    ObjectType: "INVOICE",
+    ObjectID:   "invoice-id-here",
+    Offset: &qpay.Offset{
+        PageNumber: 1,
+        PageLimit:  10,
+    },
+})
+
+if result.Count > 0 {
+    fmt.Printf("Paid amount: %.0f\n", result.PaidAmount)
+    for _, row := range result.Rows {
+        fmt.Printf("Payment %s: %s (%s)\n", row.PaymentID, row.PaymentStatus, row.PaymentAmount)
+    }
+}
+```
+
+### List Payments
+
+```go
+payments, err := client.ListPayments(ctx, &qpay.PaymentListRequest{
+    ObjectType: "INVOICE",
+    ObjectID:   "invoice-id-here",
+    StartDate:  "2024-01-01",
+    EndDate:    "2024-12-31",
+    Offset: qpay.Offset{
+        PageNumber: 1,
+        PageLimit:  20,
+    },
+})
+
+for _, p := range payments.Rows {
+    fmt.Printf("%s - %s - %s MNT\n", p.PaymentDate, p.PaymentStatus, p.PaymentAmount)
+}
+```
+
+### Create Ebarimt
+
+```go
+ebarimt, err := client.CreateEbarimt(ctx, &qpay.CreateEbarimtRequest{
+    PaymentID:           "payment-id-here",
+    EbarimtReceiverType: "83",
+    DistrictCode:        "34",
+})
+
+fmt.Printf("Lottery: %s\n", ebarimt.EbarimtLottery)
+fmt.Printf("QR Data: %s\n", ebarimt.EbarimtQRData)
+```
+
+## Error Handling
+
+All API errors are returned as `*qpay.Error` which includes the HTTP status code, QPay error code, and message.
+
+```go
+invoice, err := client.CreateSimpleInvoice(ctx, req)
+if err != nil {
+    if qErr, ok := qpay.IsQPayError(err); ok {
+        fmt.Printf("QPay error: %s (status %d)\n", qErr.Code, qErr.StatusCode)
+        fmt.Printf("Message: %s\n", qErr.Message)
+
+        switch qErr.Code {
+        case qpay.ErrInvoiceCodeInvalid:
+            // Handle invalid invoice code
+        case qpay.ErrInvalidAmount:
+            // Handle invalid amount
+        case qpay.ErrAuthenticationFailed:
+            // Handle auth failure
+        }
+    } else {
+        fmt.Printf("Error: %v\n", err)
+    }
+}
+```
+
+## API Reference
+
+| Method | Description | Returns |
+|---|---|---|
+| `NewClient(cfg)` | Create client with default HTTP settings | `*Client` |
+| `NewClientWithHTTPClient(cfg, http)` | Create client with custom HTTP client | `*Client` |
+| `GetToken(ctx)` | Authenticate and get token | `*TokenResponse, error` |
+| `RefreshToken(ctx)` | Refresh access token | `*TokenResponse, error` |
+| `CreateInvoice(ctx, req)` | Create detailed invoice | `*InvoiceResponse, error` |
+| `CreateSimpleInvoice(ctx, req)` | Create simple invoice | `*InvoiceResponse, error` |
+| `CreateEbarimtInvoice(ctx, req)` | Create invoice with ebarimt | `*InvoiceResponse, error` |
+| `CancelInvoice(ctx, id)` | Cancel invoice by ID | `error` |
+| `GetPayment(ctx, id)` | Get payment details | `*PaymentDetail, error` |
+| `CheckPayment(ctx, req)` | Check payment status | `*PaymentCheckResponse, error` |
+| `ListPayments(ctx, req)` | List payments | `*PaymentListResponse, error` |
+| `CancelPayment(ctx, id, req)` | Cancel card payment | `error` |
+| `RefundPayment(ctx, id, req)` | Refund card payment | `error` |
+| `CreateEbarimt(ctx, req)` | Create ebarimt receipt | `*EbarimtResponse, error` |
+| `CancelEbarimt(ctx, id)` | Cancel ebarimt | `*EbarimtResponse, error` |
+| `LoadConfigFromEnv()` | Load config from env vars | `*Config, error` |
+| `IsQPayError(err)` | Check if error is QPay error | `*Error, bool` |

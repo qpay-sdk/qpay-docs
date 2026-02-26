@@ -1,0 +1,101 @@
+# Authentication
+
+QPay uses a token-based authentication system. You first obtain an access token using your merchant credentials, then include that token in subsequent API requests.
+
+All QPay SDKs handle authentication automatically. You typically do not need to call these endpoints directly.
+
+## Get Token
+
+**`POST /v2/auth/token`**
+
+Authenticates using Basic Auth (username:password) and returns an access token and refresh token.
+
+### Request
+
+**Headers:**
+
+```
+Authorization: Basic base64(username:password)
+```
+
+No request body is required.
+
+### Response
+
+```json
+{
+  "token_type": "Bearer",
+  "access_token": "eyJhbGciOiJSUzI1NiIs...",
+  "expires_in": 600,
+  "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_expires_in": 3600,
+  "scope": "...",
+  "not-before-policy": "...",
+  "session_state": "..."
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `token_type` | string | Always `"Bearer"` |
+| `access_token` | string | JWT access token for API calls |
+| `expires_in` | number | Access token TTL in seconds (typically 600) |
+| `refresh_token` | string | Token used to refresh the access token |
+| `refresh_expires_in` | number | Refresh token TTL in seconds (typically 3600) |
+
+### Error Codes
+
+| Code | Description |
+|---|---|
+| `AUTHENTICATION_FAILED` | Invalid username or password |
+| `NO_CREDENDIALS` | Missing credentials |
+
+---
+
+## Refresh Token
+
+**`POST /v2/auth/refresh`**
+
+Uses a refresh token to obtain a new access token pair. The refresh token is sent in the Authorization header.
+
+### Request
+
+**Headers:**
+
+```
+Authorization: Bearer <refresh_token>
+```
+
+No request body is required.
+
+### Response
+
+Same structure as Get Token:
+
+```json
+{
+  "token_type": "Bearer",
+  "access_token": "eyJhbGciOiJSUzI1NiIs...",
+  "expires_in": 600,
+  "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_expires_in": 3600
+}
+```
+
+### Error Codes
+
+| Code | Description |
+|---|---|
+| `AUTHENTICATION_FAILED` | Invalid or expired refresh token |
+
+---
+
+## Token Lifecycle
+
+1. **Initial authentication**: Call `POST /v2/auth/token` with Basic Auth credentials.
+2. **Use access token**: Include the access token in all subsequent requests as `Authorization: Bearer <access_token>`.
+3. **Token expiry**: When the access token expires (typically after 600 seconds), refresh it.
+4. **Refresh**: Call `POST /v2/auth/refresh` with the refresh token to get a new token pair.
+5. **Refresh token expiry**: If the refresh token also expires (typically after 3600 seconds), re-authenticate with credentials.
+
+All QPay SDKs implement this lifecycle automatically. You do not need to manage tokens manually in most cases.

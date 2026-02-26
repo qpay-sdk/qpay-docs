@@ -1,0 +1,198 @@
+# JavaScript / TypeScript SDK
+
+TypeScript/JavaScript client library for the QPay V2 payment API. Works in Node.js (18+) and modern browsers.
+
+- **npm**: [qpay-js](https://www.npmjs.com/package/qpay-js)
+- **GitHub**: [github.com/qpay-sdk/qpay-js](https://github.com/qpay-sdk/qpay-js)
+
+## Installation
+
+```bash
+npm install qpay-js
+```
+
+## Quick Start
+
+```typescript
+import { QPayClient, loadConfigFromEnv } from 'qpay-js';
+
+// Load config from environment variables
+const config = loadConfigFromEnv();
+const client = new QPayClient(config);
+
+// Create an invoice
+const invoice = await client.createSimpleInvoice({
+  invoiceCode: 'TEST_INVOICE',
+  senderInvoiceNo: 'ORDER-001',
+  invoiceReceiverCode: 'terminal',
+  invoiceDescription: 'Payment for Order #001',
+  amount: 10000,
+  callbackUrl: 'https://example.com/api/qpay/callback',
+});
+
+console.log(invoice.invoiceId);    // "abc123..."
+console.log(invoice.qPayShortUrl); // "https://qpay.mn/s/..."
+console.log(invoice.qrImage);      // base64-encoded QR image
+```
+
+## Configuration
+
+### From Environment Variables
+
+Set the following environment variables, then call `loadConfigFromEnv()`:
+
+| Variable | Description |
+|---|---|
+| `QPAY_BASE_URL` | QPay API base URL (e.g., `https://merchant.qpay.mn`) |
+| `QPAY_USERNAME` | QPay merchant username |
+| `QPAY_PASSWORD` | QPay merchant password |
+| `QPAY_INVOICE_CODE` | Default invoice code |
+| `QPAY_CALLBACK_URL` | Payment callback URL |
+
+```typescript
+import { QPayClient, loadConfigFromEnv } from 'qpay-js';
+
+const client = new QPayClient(loadConfigFromEnv());
+```
+
+### Manual Configuration
+
+```typescript
+import { QPayClient } from 'qpay-js';
+import type { QPayConfig } from 'qpay-js';
+
+const config: QPayConfig = {
+  baseUrl: 'https://merchant.qpay.mn',
+  username: 'YOUR_USERNAME',
+  password: 'YOUR_PASSWORD',
+  invoiceCode: 'YOUR_INVOICE_CODE',
+  callbackUrl: 'https://example.com/api/qpay/callback',
+};
+
+const client = new QPayClient(config);
+```
+
+## Usage
+
+### Create Simple Invoice
+
+```typescript
+const invoice = await client.createSimpleInvoice({
+  invoiceCode: 'TEST_INVOICE',
+  senderInvoiceNo: 'ORDER-002',
+  invoiceReceiverCode: 'terminal',
+  invoiceDescription: 'Quick payment',
+  amount: 10000,
+  callbackUrl: 'https://example.com/api/qpay/callback',
+});
+```
+
+### Check Payment
+
+```typescript
+const result = await client.checkPayment({
+  objectType: 'INVOICE',
+  objectId: 'INVOICE_ID',
+  offset: { pageNumber: 1, pageLimit: 10 },
+});
+
+console.log(result.count);
+console.log(result.paidAmount);
+
+for (const row of result.rows) {
+  console.log(row.paymentId, row.paymentStatus, row.paymentAmount);
+}
+```
+
+### List Payments
+
+```typescript
+const result = await client.listPayments({
+  objectType: 'INVOICE',
+  objectId: 'INVOICE_ID',
+  startDate: '2026-01-01',
+  endDate: '2026-12-31',
+  offset: { pageNumber: 1, pageLimit: 20 },
+});
+
+for (const item of result.rows) {
+  console.log(item.paymentId, item.paymentDate, item.paymentAmount);
+}
+```
+
+### Create Ebarimt
+
+```typescript
+const ebarimt = await client.createEbarimt({
+  paymentId: 'PAYMENT_ID',
+  ebarimtReceiverType: 'CITIZEN',
+  districtCode: 'UB',
+});
+
+console.log(ebarimt.id);
+console.log(ebarimt.ebarimtQrData);
+console.log(ebarimt.ebarimtLottery);
+```
+
+## Error Handling
+
+All API errors throw a `QPayError` with structured information:
+
+```typescript
+import { QPayError, isQPayError, ERR_INVOICE_NOT_FOUND } from 'qpay-js';
+
+try {
+  await client.getPayment('NONEXISTENT');
+} catch (err) {
+  if (isQPayError(err)) {
+    console.log(err.statusCode); // 404
+    console.log(err.code);       // "INVOICE_NOTFOUND"
+    console.log(err.message);    // "qpay: INVOICE_NOTFOUND - Invoice not found (status 404)"
+    console.log(err.rawBody);    // Raw JSON response body
+
+    if (err.code === ERR_INVOICE_NOT_FOUND) {
+      // Handle specific error
+    }
+  }
+}
+```
+
+## Browser Usage
+
+This library works in modern browsers that support the `fetch` API. In browser environments, use manual configuration instead of `loadConfigFromEnv()`.
+
+```html
+<script type="module">
+  import { QPayClient } from 'qpay-js';
+
+  const client = new QPayClient({
+    baseUrl: 'https://merchant.qpay.mn',
+    username: 'YOUR_USERNAME',
+    password: 'YOUR_PASSWORD',
+    invoiceCode: 'YOUR_INVOICE_CODE',
+    callbackUrl: 'https://example.com/callback',
+  });
+
+  const invoice = await client.createSimpleInvoice({ ... });
+  document.getElementById('qr').src = `data:image/png;base64,${invoice.qrImage}`;
+</script>
+```
+
+## API Reference
+
+| Method | Description |
+|---|---|
+| `new QPayClient(config)` | Create a new client with the given config |
+| `getToken()` | Authenticate and return a token pair |
+| `refreshToken()` | Refresh the current access token |
+| `createInvoice(req)` | Create a detailed invoice |
+| `createSimpleInvoice(req)` | Create a simple invoice with minimal fields |
+| `createEbarimtInvoice(req)` | Create an invoice with ebarimt (tax) data |
+| `cancelInvoice(invoiceId)` | Cancel an invoice by ID |
+| `getPayment(paymentId)` | Get payment details by ID |
+| `checkPayment(req)` | Check if a payment has been made |
+| `listPayments(req)` | List payments with filters |
+| `cancelPayment(paymentId, req?)` | Cancel a card payment |
+| `refundPayment(paymentId, req?)` | Refund a card payment |
+| `createEbarimt(req)` | Create an electronic tax receipt |
+| `cancelEbarimt(paymentId)` | Cancel an ebarimt by payment ID |
