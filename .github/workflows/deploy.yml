@@ -27,6 +27,7 @@ jobs:
         env:
           GITHUB_PAGES: true
       - run: npx pagefind --site out --output-path out/qpay-docs/_pagefind
+      - run: touch out/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ./out
