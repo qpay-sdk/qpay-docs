@@ -1,20 +1,97 @@
 # Rails
 
-QPay V2 payment integration for Rails. Wraps [qpay](https://github.com/qpay-sdk/qpay-ruby) gem.
+QPay V2 payment integration for Ruby on Rails 7+. Built on top of the [qpay](https://github.com/qpay-sdk/qpay-ruby) gem, this package provides a Rails engine with configuration, a client singleton, webhook controller, view helpers, and ActiveSupport notifications.
 
 - **GitHub**: [qpay-sdk/qpay-rails](https://github.com/qpay-sdk/qpay-rails)
+- **RubyGems**: [qpay-rails](https://rubygems.org/gems/qpay-rails)
+- **Requirements**: Ruby 3.0+, Rails 7.0+
+
+---
 
 ## Installation
+
+Add to your `Gemfile`:
 
 ```ruby
 gem "qpay-rails"
 ```
 
+Then run:
+
+```bash
+bundle install
+```
+
+Run the install generator:
+
 ```bash
 rails generate qpay:install
 ```
 
-## Usage
+This will:
+1. Create `config/initializers/qpay.rb` with configuration
+2. Add `mount QPay::Rails::Engine => "/qpay"` to your routes
+
+---
+
+## Configuration
+
+### Initializer
+
+The generated `config/initializers/qpay.rb`:
+
+```ruby
+QPay::Rails.configure do |config|
+  config.base_url     = ENV.fetch("QPAY_BASE_URL", "https://merchant.qpay.mn")
+  config.username     = ENV.fetch("QPAY_USERNAME")
+  config.password     = ENV.fetch("QPAY_PASSWORD")
+  config.invoice_code = ENV.fetch("QPAY_INVOICE_CODE")
+  config.callback_url = ENV.fetch("QPAY_CALLBACK_URL")
+end
+```
+
+### Environment Variables
+
+Set the following in your environment (or `.env` file with `dotenv-rails`):
+
+```bash
+QPAY_BASE_URL=https://merchant.qpay.mn
+QPAY_USERNAME=your_username
+QPAY_PASSWORD=your_password
+QPAY_INVOICE_CODE=your_invoice_code
+QPAY_CALLBACK_URL=https://yoursite.com/qpay/webhooks
+```
+
+### Configuration Options
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `base_url` | `https://merchant.qpay.mn` | QPay API base URL |
+| `username` | from env | Merchant username |
+| `password` | from env | Merchant password |
+| `invoice_code` | from env | Default invoice code |
+| `callback_url` | from env | Payment callback URL |
+
+The `Configuration` class reads from environment variables by default if not explicitly set.
+
+---
+
+## Quick Start
+
+### Route Setup
+
+The install generator adds the engine mount to your `config/routes.rb`:
+
+```ruby
+Rails.application.routes.draw do
+  mount QPay::Rails::Engine => "/qpay"
+  # ...
+end
+```
+
+This registers `POST /qpay/webhooks` as the webhook endpoint.
+
+### Create an Invoice
 
 ```ruby
 client = QPay::Rails.client
@@ -24,19 +101,299 @@ invoice = client.create_simple_invoice(
   amount: 10000,
   callback_url: "https://yoursite.com/qpay/webhooks"
 )
+
+# invoice.invoice_id    -- QPay invoice ID
+# invoice.qr_image      -- Base64 QR code
+# invoice.qr_text       -- QR code text
+# invoice.qpay_short_url -- Short payment URL
+# invoice.urls          -- Bank deep links
 ```
+
+---
+
+## Create Invoice
+
+### Simple Invoice
+
+```ruby
+client = QPay::Rails.client
+
+invoice = client.create_simple_invoice(
+  invoice_code: "YOUR_CODE",
+  sender_invoice_no: "ORDER-#{order.id}",
+  amount: order.total,
+  callback_url: "https://yoursite.com/qpay/webhooks"
+)
+```
+
+### Full Invoice
+
+```ruby
+invoice = client.create_invoice(
+  invoice_code: "YOUR_CODE",
+  sender_invoice_no: "ORDER-#{order.id}",
+  invoice_receiver_code: "receiver_001",
+  invoice_description: "Payment for Order ##{order.id}",
+  amount: order.total,
+  callback_url: "https://yoursite.com/qpay/webhooks"
+)
+```
+
+### Check Payment
+
+```ruby
+result = client.check_payment(
+  object_type: "INVOICE",
+  object_id: invoice_id
+)
+
+if result.rows&.any?
+  puts "Payment confirmed!"
+end
+```
+
+### Cancel Invoice
+
+```ruby
+client.cancel_invoice(invoice_id)
+```
+
+### Using in Controllers
+
+```ruby
+class PaymentsController < ApplicationController
+  def create
+    client = QPay::Rails.client
+    invoice = client.create_simple_invoice(
+      invoice_code: "YOUR_CODE",
+      sender_invoice_no: "ORDER-#{@order.id}",
+      amount: @order.total,
+      callback_url: "https://yoursite.com/qpay/webhooks"
+    )
+
+    @order.update(qpay_invoice_id: invoice.invoice_id)
+    render :show, locals: { invoice: invoice }
+  end
+end
+```
+
+---
+
+## Webhook Handling
+
+The engine registers a webhook controller at `POST /qpay/webhooks` (via the engine mount).
+
+### Webhook Flow
+
+When QPay sends a callback:
+
+1. The `WebhooksController` extracts `invoice_id` from the request parameters
+2. Calls `check_payment` to verify the payment
+3. Instruments an `ActiveSupport::Notifications` event (`payment_received.qpay`) if payment rows are found
+4. Returns a JSON response with the status
+
+### Engine Routes
+
+```ruby
+# config/routes.rb (inside the engine)
+QPay::Rails::Engine.routes.draw do
+  post "webhooks", to: "webhooks#create"
+end
+```
+
+The controller inherits from `ActionController::API` so no CSRF verification is applied.
+
+---
+
+## Events (ActiveSupport Notifications)
+
+### payment_received.qpay
+
+Subscribe to payment notifications using ActiveSupport:
+
+```ruby
+ActiveSupport::Notifications.subscribe("payment_received.qpay") do |name, start, finish, id, payload|
+  invoice_id = payload[:invoice_id]
+  result = payload[:result]
+
+  # Update order status
+  order = Order.find_by(qpay_invoice_id: invoice_id)
+  order&.update(status: :paid)
+end
+```
+
+### Using with ActiveSupport::Subscriber
+
+```ruby
+class PaymentSubscriber < ActiveSupport::Subscriber
+  attach_to :qpay
+
+  def payment_received(event)
+    invoice_id = event.payload[:invoice_id]
+    result = event.payload[:result]
+
+    Order.find_by(qpay_invoice_id: invoice_id)&.update(status: :paid)
+  end
+end
+```
+
+### In an Initializer
+
+```ruby
+# config/initializers/qpay_events.rb
+ActiveSupport::Notifications.subscribe("payment_received.qpay") do |*args|
+  event = ActiveSupport::Notifications::Event.new(*args)
+  Rails.logger.info "QPay payment received: #{event.payload[:invoice_id]}"
+end
+```
+
+---
 
 ## View Helpers
 
+The engine provides view helpers for rendering QPay UI elements. The `QPayHelper` module is automatically loaded.
+
+### QR Code
+
 ```erb
 <%= qpay_qr_code(invoice.qr_image) %>
+
+<%# With custom size %>
+<%= qpay_qr_code(invoice.qr_image, size: 200) %>
+```
+
+Renders a centered `<div>` containing an `<img>` tag with the base64-encoded QR code.
+
+### Payment Links
+
+```erb
 <%= qpay_payment_links(invoice.urls) %>
 ```
 
-## Webhook
+Renders a flex container with styled bank payment link buttons. Each button shows the bank logo and name.
+
+### Full View Example
+
+```erb
+<h1>Payment for Order #<%= @order.id %></h1>
+
+<div class="qpay-payment">
+  <%= qpay_qr_code(@invoice.qr_image) %>
+
+  <h2>Pay with Bank App</h2>
+  <%= qpay_payment_links(@invoice.urls) %>
+</div>
+```
+
+---
+
+## Testing
+
+### Mocking the Client
 
 ```ruby
-ActiveSupport::Notifications.subscribe("payment_received.qpay") do |_name, _s, _f, _id, payload|
-  invoice_id = payload[:invoice_id]
+# spec/services/payment_service_spec.rb
+require "rails_helper"
+
+RSpec.describe PaymentService do
+  let(:mock_client) { instance_double(QPay::Client) }
+  let(:mock_invoice) { double(invoice_id: "inv_123", qr_image: "base64") }
+
+  before do
+    allow(QPay::Rails).to receive(:client).and_return(mock_client)
+    allow(mock_client).to receive(:create_simple_invoice).and_return(mock_invoice)
+  end
+
+  it "creates an invoice" do
+    result = described_class.new.create_payment(order)
+    expect(result.invoice_id).to eq("inv_123")
+  end
 end
 ```
+
+### Testing Webhook Notifications
+
+```ruby
+require "rails_helper"
+
+RSpec.describe "QPay Webhook" do
+  it "fires payment_received notification" do
+    events = []
+    ActiveSupport::Notifications.subscribe("payment_received.qpay") do |*args|
+      events << ActiveSupport::Notifications::Event.new(*args)
+    end
+
+    # Mock client
+    mock_client = instance_double(QPay::Client)
+    mock_result = double(rows: [{ payment_id: "pay_123" }])
+    allow(QPay::Rails).to receive(:client).and_return(mock_client)
+    allow(mock_client).to receive(:check_payment).and_return(mock_result)
+
+    post "/qpay/webhooks", params: { invoice_id: "inv_123" }
+
+    expect(events.length).to eq(1)
+    expect(events.first.payload[:invoice_id]).to eq("inv_123")
+  end
+end
+```
+
+### Resetting the Client
+
+Between tests, reset the singleton client:
+
+```ruby
+after do
+  QPay::Rails::Client.reset!
+end
+```
+
+---
+
+## API Reference
+
+### Module Methods
+
+| Method | Description |
+|--------|-------------|
+| `QPay::Rails.configure { \|config\| ... }` | Configure the integration |
+| `QPay::Rails.configuration` | Get the current configuration |
+| `QPay::Rails.client` | Get the singleton `QPay::Client` instance |
+
+### Configuration Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `base_url` | `String` | QPay API base URL |
+| `username` | `String` | Merchant username |
+| `password` | `String` | Merchant password |
+| `invoice_code` | `String` | Default invoice code |
+| `callback_url` | `String` | Payment callback URL |
+
+### View Helpers
+
+| Helper | Parameters | Description |
+|--------|------------|-------------|
+| `qpay_qr_code(qr_image, size: 256)` | QR image string, optional size | Renders QR code image |
+| `qpay_payment_links(urls)` | Array of bank link hashes | Renders bank payment buttons |
+
+### ActiveSupport Notifications
+
+| Event Name | Payload Keys | Description |
+|------------|-------------|-------------|
+| `payment_received.qpay` | `:invoice_id`, `:result` | Fired when payment is confirmed |
+
+### Generator
+
+```bash
+rails generate qpay:install
+```
+
+Creates the initializer and mounts the engine routes.
+
+---
+
+## Links
+
+- **GitHub**: [github.com/qpay-sdk/qpay-rails](https://github.com/qpay-sdk/qpay-rails)
+- **RubyGems**: [rubygems.org/gems/qpay-rails](https://rubygems.org/gems/qpay-rails)
+- **Base SDK**: [qpay-ruby](/sdks/ruby)

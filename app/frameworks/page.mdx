@@ -1,15 +1,68 @@
 # Framework Packages
 
-QPay SDK-уудын дээр суурилсан framework-specific integration package-ууд. Тухайн framework-ийн convention дагаж, DI, config, webhook, UI component-уудыг бэлнээр хангана.
+Framework-specific integration packages built on top of QPay core SDKs. Each package follows the conventions of its target framework, providing dependency injection, configuration, webhook handling, UI components, and event-driven payment notifications out of the box.
 
-| Framework | Package | Registry | GitHub |
-|-----------|---------|----------|--------|
-| Laravel | `qpay-sdk/laravel` | Packagist | [qpay-laravel](https://github.com/qpay-sdk/qpay-laravel) |
-| Django | `django-qpay` | PyPI | [django-qpay](https://github.com/qpay-sdk/django-qpay) |
-| Spring Boot | `qpay-spring-boot-starter` | Maven Central | [qpay-spring-boot-starter](https://github.com/qpay-sdk/qpay-spring-boot-starter) |
-| Express | `@qpay-sdk/express` | npm | [qpay-express](https://github.com/qpay-sdk/qpay-express) |
-| NestJS | `@qpay-sdk/nestjs` | npm | [qpay-nestjs](https://github.com/qpay-sdk/qpay-nestjs) |
-| Rails | `qpay-rails` | RubyGems | [qpay-rails](https://github.com/qpay-sdk/qpay-rails) |
-| ASP.NET Core | `QPay.AspNetCore` | NuGet | [qpay-aspnetcore](https://github.com/qpay-sdk/qpay-aspnetcore) |
-| Flutter | `qpay_flutter` | pub.dev | [qpay-flutter](https://github.com/qpay-sdk/qpay-flutter) |
-| FastAPI | `fastapi-qpay` | PyPI | [fastapi-qpay](https://github.com/qpay-sdk/fastapi-qpay) |
+## Available Frameworks
+
+| Framework | Package | Registry | Language | Base SDK |
+|-----------|---------|----------|----------|----------|
+| [Laravel](/frameworks/laravel) | `qpay-sdk/laravel` | [Packagist](https://packagist.org/packages/qpay-sdk/laravel) | PHP | qpay-php |
+| [Django](/frameworks/django) | `django-qpay` | [PyPI](https://pypi.org/project/django-qpay/) | Python | qpay-py |
+| [Spring Boot](/frameworks/spring-boot) | `qpay-spring-boot-starter` | [Maven Central](https://central.sonatype.com/artifact/mn.qpay/qpay-spring-boot-starter) | Java | qpay-java |
+| [Express](/frameworks/express) | `@qpay-sdk/express` | [npm](https://www.npmjs.com/package/@qpay-sdk/express) | TypeScript | qpay-js |
+| [NestJS](/frameworks/nestjs) | `@qpay-sdk/nestjs` | [npm](https://www.npmjs.com/package/@qpay-sdk/nestjs) | TypeScript | qpay-js |
+| [Rails](/frameworks/rails) | `qpay-rails` | [RubyGems](https://rubygems.org/gems/qpay-rails) | Ruby | qpay |
+| [ASP.NET Core](/frameworks/aspnetcore) | `QPay.AspNetCore` | [NuGet](https://www.nuget.org/packages/QPay.AspNetCore) | C# | QPay |
+| [Flutter](/frameworks/flutter) | `qpay_flutter` | [pub.dev](https://pub.dev/packages/qpay_flutter) | Dart | qpay |
+| [FastAPI](/frameworks/fastapi) | `fastapi-qpay` | [PyPI](https://pypi.org/project/fastapi-qpay/) | Python | qpay-py |
+
+## What Each Package Provides
+
+All framework packages share a common set of features:
+
+- **Auto-configuration** -- Zero-boilerplate setup using the framework's native configuration system
+- **Dependency injection** -- QPay client registered as a service/singleton in the framework's DI container
+- **Webhook controller** -- Pre-built endpoint that receives QPay callbacks, verifies payments, and dispatches events
+- **Events/Signals** -- Framework-native events fired when payments are received or fail
+- **UI helpers** -- QR code rendering and bank payment link components (Blade, Thymeleaf, Django templates, ERB, Flutter widgets)
+- **Testing support** -- Mock-friendly architecture with testable service interfaces
+
+## Architecture
+
+Each framework package is a thin wrapper around its corresponding core SDK:
+
+```
+Your Application
+      |
+Framework Package (Laravel, Django, Spring Boot, etc.)
+      |
+Core SDK (qpay-php, qpay-py, qpay-java, qpay-js, etc.)
+      |
+QPay V2 REST API
+```
+
+The framework package handles configuration, DI, routing, and events. The core SDK handles HTTP requests, authentication, token management, and serialization.
+
+## Environment Variables
+
+All framework packages use the same set of environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `QPAY_BASE_URL` | QPay API base URL | `https://merchant.qpay.mn` |
+| `QPAY_USERNAME` | Merchant username | (required) |
+| `QPAY_PASSWORD` | Merchant password | (required) |
+| `QPAY_INVOICE_CODE` | Default invoice code | (required) |
+| `QPAY_CALLBACK_URL` | Webhook callback URL | (required) |
+
+## Choosing a Framework Package
+
+- **PHP**: [Laravel](/frameworks/laravel) for Laravel apps
+- **Python**: [Django](/frameworks/django) for Django, [FastAPI](/frameworks/fastapi) for FastAPI
+- **Java**: [Spring Boot](/frameworks/spring-boot) for Spring Boot apps
+- **JavaScript/TypeScript**: [Express](/frameworks/express) for Express, [NestJS](/frameworks/nestjs) for NestJS
+- **Ruby**: [Rails](/frameworks/rails) for Ruby on Rails apps
+- **C#**: [ASP.NET Core](/frameworks/aspnetcore) for .NET web apps
+- **Dart/Flutter**: [Flutter](/frameworks/flutter) for mobile apps
+
+If your framework is not listed, use the [core SDK](/sdks) directly for your language.

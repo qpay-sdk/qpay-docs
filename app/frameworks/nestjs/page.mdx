@@ -1,8 +1,12 @@
 # NestJS
 
-QPay V2 payment module for NestJS. Wraps [qpay-js](https://github.com/qpay-sdk/qpay-js) SDK.
+QPay V2 payment module for NestJS. Built on top of [qpay-js](https://github.com/qpay-sdk/qpay-js), this package provides a global NestJS module with dependency injection, an injectable `QPayService`, a webhook controller, and support for both synchronous and asynchronous configuration.
 
 - **GitHub**: [qpay-sdk/qpay-nestjs](https://github.com/qpay-sdk/qpay-nestjs)
+- **npm**: [@qpay-sdk/nestjs](https://www.npmjs.com/package/@qpay-sdk/nestjs)
+- **Requirements**: Node.js 18+, NestJS 10+, qpay-js 1.x
+
+---
 
 ## Installation
 
@@ -10,9 +14,16 @@ QPay V2 payment module for NestJS. Wraps [qpay-js](https://github.com/qpay-sdk/q
 npm install @qpay-sdk/nestjs qpay-js
 ```
 
-## Module Setup
+Both `@nestjs/common`, `@nestjs/core`, `qpay-js`, and `reflect-metadata` are peer dependencies.
+
+---
+
+## Configuration
+
+### Static Configuration (forRoot)
 
 ```typescript
+import { Module } from '@nestjs/common';
 import { QPayModule } from '@qpay-sdk/nestjs';
 
 @Module({
@@ -29,23 +40,86 @@ import { QPayModule } from '@qpay-sdk/nestjs';
 export class AppModule {}
 ```
 
-## Async Configuration
+### Async Configuration (forRootAsync)
+
+Use `forRootAsync` to load configuration from NestJS `ConfigService` or other async sources:
 
 ```typescript
-QPayModule.forRootAsync({
-  imports: [ConfigModule],
-  useFactory: (config: ConfigService) => ({
-    baseUrl: config.get('QPAY_BASE_URL'),
-    username: config.get('QPAY_USERNAME'),
-    password: config.get('QPAY_PASSWORD'),
-    invoiceCode: config.get('QPAY_INVOICE_CODE'),
-    callbackUrl: config.get('QPAY_CALLBACK_URL'),
-  }),
-  inject: [ConfigService],
+import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { QPayModule } from '@qpay-sdk/nestjs';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot(),
+    QPayModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (config: ConfigService) => ({
+        baseUrl: config.get('QPAY_BASE_URL', 'https://merchant.qpay.mn'),
+        username: config.get('QPAY_USERNAME'),
+        password: config.get('QPAY_PASSWORD'),
+        invoiceCode: config.get('QPAY_INVOICE_CODE'),
+        callbackUrl: config.get('QPAY_CALLBACK_URL'),
+      }),
+      inject: [ConfigService],
+    }),
+  ],
 })
+export class AppModule {}
 ```
 
-## Inject Service
+### Environment Variables
+
+When using `ConfigModule`, set these in your `.env`:
+
+```bash
+QPAY_BASE_URL=https://merchant.qpay.mn
+QPAY_USERNAME=your_username
+QPAY_PASSWORD=your_password
+QPAY_INVOICE_CODE=your_invoice_code
+QPAY_CALLBACK_URL=https://yoursite.com/qpay/webhook
+```
+
+### Configuration Options
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `baseUrl` | `string` | QPay API base URL |
+| `username` | `string` | Merchant username |
+| `password` | `string` | Merchant password |
+| `invoiceCode` | `string` | Default invoice code |
+| `callbackUrl` | `string` | Payment callback URL |
+
+The `QPayModuleOptions` interface extends `QPayConfig` from `qpay-js`.
+
+---
+
+## Quick Start
+
+```typescript
+import { Injectable } from '@nestjs/common';
+import { QPayService } from '@qpay-sdk/nestjs';
+
+@Injectable()
+export class PaymentService {
+  constructor(private readonly qpay: QPayService) {}
+
+  async createPayment(orderId: string, amount: number) {
+    return this.qpay.createSimpleInvoice({
+      invoiceCode: 'YOUR_CODE',
+      senderInvoiceNo: `ORDER-${orderId}`,
+      amount,
+      callbackUrl: 'https://yoursite.com/qpay/webhook',
+    });
+  }
+}
+```
+
+---
+
+## Create Invoice
+
+### Simple Invoice
 
 ```typescript
 import { QPayService } from '@qpay-sdk/nestjs';
@@ -54,8 +128,310 @@ import { QPayService } from '@qpay-sdk/nestjs';
 export class PaymentService {
   constructor(private readonly qpay: QPayService) {}
 
-  async createPayment() {
-    return this.qpay.createSimpleInvoice({ ... });
+  async createInvoice(orderId: string, amount: number) {
+    const invoice = await this.qpay.createSimpleInvoice({
+      invoiceCode: 'YOUR_CODE',
+      senderInvoiceNo: `ORDER-${orderId}`,
+      amount,
+      callbackUrl: 'https://yoursite.com/qpay/webhook',
+    });
+
+    // invoice.invoiceId    -- QPay invoice ID
+    // invoice.qrImage      -- Base64 QR code
+    // invoice.qrText       -- QR code text
+    // invoice.qPayShortUrl -- Short payment URL
+    // invoice.urls         -- Bank deep links
+
+    return invoice;
   }
 }
 ```
+
+### Full Invoice
+
+```typescript
+const invoice = await this.qpay.createInvoice({
+  invoiceCode: 'YOUR_CODE',
+  senderInvoiceNo: 'ORDER-001',
+  invoiceReceiverCode: 'receiver_001',
+  invoiceDescription: 'Payment for Order #001',
+  amount: 10000,
+  callbackUrl: 'https://yoursite.com/qpay/webhook',
+});
+```
+
+### Check Payment
+
+```typescript
+const result = await this.qpay.checkPayment({
+  objectType: 'INVOICE',
+  objectId: invoiceId,
+});
+
+if (result.rows && result.rows.length > 0) {
+  // Payment confirmed
+}
+```
+
+### Cancel Invoice
+
+```typescript
+await this.qpay.cancelInvoice(invoiceId);
+```
+
+### Get Payment Detail
+
+```typescript
+const payment = await this.qpay.getPayment(paymentId);
+```
+
+### List Payments
+
+```typescript
+const payments = await this.qpay.listPayments({
+  objectType: 'INVOICE',
+  objectId: invoiceId,
+});
+```
+
+### Direct Client Access
+
+For advanced use cases, get the underlying `QPayClient`:
+
+```typescript
+const client = this.qpay.getClient();
+```
+
+---
+
+## Webhook Handling
+
+### Built-in Webhook Controller
+
+The package includes a `QPayWebhookController` that handles `POST /qpay/webhook`:
+
+```typescript
+import { Module } from '@nestjs/common';
+import { QPayModule, QPayWebhookController } from '@qpay-sdk/nestjs';
+
+@Module({
+  imports: [QPayModule.forRoot({ /* ... */ })],
+  controllers: [QPayWebhookController],
+})
+export class AppModule {}
+```
+
+The controller:
+1. Accepts `POST /qpay/webhook` with `{ invoice_id: string }` body
+2. Calls `checkPayment` to verify the payment
+3. Returns `{ status: 'paid', invoiceId }` or `{ status: 'unpaid', invoiceId }`
+
+### Custom Webhook Controller
+
+For more control, create your own webhook controller:
+
+```typescript
+import { Controller, Post, Body, HttpCode } from '@nestjs/common';
+import { QPayService } from '@qpay-sdk/nestjs';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+
+@Controller('qpay')
+export class CustomWebhookController {
+  constructor(
+    private readonly qpay: QPayService,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
+
+  @Post('webhook')
+  @HttpCode(200)
+  async handleWebhook(@Body() body: { invoice_id?: string }) {
+    const invoiceId = body.invoice_id;
+    if (!invoiceId) {
+      return { error: 'Missing invoice_id' };
+    }
+
+    const result = await this.qpay.checkPayment({
+      objectType: 'INVOICE',
+      objectId: invoiceId,
+    });
+
+    if (result.rows?.length > 0) {
+      this.eventEmitter.emit('payment.received', { invoiceId, result });
+      return { status: 'paid', invoiceId };
+    }
+
+    return { status: 'unpaid', invoiceId };
+  }
+}
+```
+
+---
+
+## Dependency Injection
+
+### Using QPayService
+
+`QPayService` is automatically available in any provider because `QPayModule` is decorated with `@Global()`:
+
+```typescript
+import { Injectable } from '@nestjs/common';
+import { QPayService } from '@qpay-sdk/nestjs';
+
+@Injectable()
+export class OrderService {
+  constructor(private readonly qpay: QPayService) {}
+}
+```
+
+### Using @InjectQPay Decorator
+
+Inject the raw `QPayClient` directly using the custom decorator:
+
+```typescript
+import { Injectable } from '@nestjs/common';
+import { InjectQPay } from '@qpay-sdk/nestjs';
+import { QPayClient } from 'qpay-js';
+
+@Injectable()
+export class PaymentService {
+  constructor(@InjectQPay() private readonly client: QPayClient) {}
+
+  async pay() {
+    return this.client.createSimpleInvoice({ /* ... */ });
+  }
+}
+```
+
+### Injection Tokens
+
+| Token | Value | Provides |
+|-------|-------|----------|
+| `QPAY_OPTIONS` | `'QPAY_OPTIONS'` | `QPayModuleOptions` configuration |
+| `QPAY_CLIENT` | `'QPAY_CLIENT'` | `QPayClient` instance |
+
+---
+
+## Testing
+
+### Mocking QPayService
+
+```typescript
+import { Test, TestingModule } from '@nestjs/testing';
+import { QPayService } from '@qpay-sdk/nestjs';
+
+describe('PaymentService', () => {
+  let service: PaymentService;
+  let qpayService: QPayService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        PaymentService,
+        {
+          provide: QPayService,
+          useValue: {
+            createSimpleInvoice: jest.fn().mockResolvedValue({
+              invoiceId: 'inv_123',
+              qrImage: 'base64data',
+            }),
+            checkPayment: jest.fn().mockResolvedValue({
+              rows: [{ paymentId: 'pay_123' }],
+            }),
+            cancelInvoice: jest.fn(),
+            getPayment: jest.fn(),
+            listPayments: jest.fn(),
+            getClient: jest.fn(),
+          },
+        },
+      ],
+    }).compile();
+
+    service = module.get(PaymentService);
+    qpayService = module.get(QPayService);
+  });
+
+  it('should create invoice', async () => {
+    const result = await service.createPayment('001', 10000);
+    expect(result.invoiceId).toBe('inv_123');
+    expect(qpayService.createSimpleInvoice).toHaveBeenCalled();
+  });
+});
+```
+
+### Testing the Webhook Controller
+
+```typescript
+import { Test, TestingModule } from '@nestjs/testing';
+import { QPayWebhookController, QPayService } from '@qpay-sdk/nestjs';
+
+describe('QPayWebhookController', () => {
+  let controller: QPayWebhookController;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [QPayWebhookController],
+      providers: [
+        {
+          provide: QPayService,
+          useValue: {
+            checkPayment: jest.fn().mockResolvedValue({
+              rows: [{ paymentId: 'pay_123' }],
+            }),
+          },
+        },
+      ],
+    }).compile();
+
+    controller = module.get(QPayWebhookController);
+  });
+
+  it('should return paid status', async () => {
+    const result = await controller.handleWebhook({ invoice_id: 'inv_123' });
+    expect(result).toEqual({ status: 'paid', invoiceId: 'inv_123' });
+  });
+});
+```
+
+---
+
+## API Reference
+
+### Module
+
+| Method | Description |
+|--------|-------------|
+| `QPayModule.forRoot(options)` | Register with static configuration |
+| `QPayModule.forRootAsync(options)` | Register with async configuration |
+
+### QPayService Methods
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `createInvoice(request)` | `Promise<InvoiceResponse>` | Create a full invoice |
+| `createSimpleInvoice(request)` | `Promise<InvoiceResponse>` | Create a simple invoice |
+| `cancelInvoice(invoiceId)` | `Promise<void>` | Cancel an invoice |
+| `getPayment(paymentId)` | `Promise<PaymentDetail>` | Get payment details |
+| `checkPayment(request)` | `Promise<PaymentCheckResponse>` | Check payment status |
+| `listPayments(request)` | `Promise<PaymentListResponse>` | List payments |
+| `getClient()` | `QPayClient` | Access the underlying client |
+
+### Exported Symbols
+
+| Export | Description |
+|--------|-------------|
+| `QPayModule` | NestJS dynamic module |
+| `QPayService` | Injectable payment service |
+| `QPayWebhookController` | Built-in webhook controller |
+| `InjectQPay` | Decorator for injecting raw `QPayClient` |
+| `QPAY_OPTIONS` | Injection token for config options |
+| `QPAY_CLIENT` | Injection token for client instance |
+| `QPayModuleOptions` | Configuration interface (type) |
+| `QPayModuleAsyncOptions` | Async configuration interface (type) |
+
+---
+
+## Links
+
+- **GitHub**: [github.com/qpay-sdk/qpay-nestjs](https://github.com/qpay-sdk/qpay-nestjs)
+- **npm**: [npmjs.com/package/@qpay-sdk/nestjs](https://www.npmjs.com/package/@qpay-sdk/nestjs)
+- **Base SDK**: [qpay-js](/sdks/javascript)

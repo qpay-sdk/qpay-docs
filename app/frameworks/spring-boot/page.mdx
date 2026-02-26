@@ -1,10 +1,16 @@
 # Spring Boot
 
-QPay V2 payment starter for Spring Boot. Wraps [qpay-java](https://github.com/qpay-sdk/qpay-java) SDK.
+QPay V2 payment starter for Spring Boot 3.2+. Built on top of [qpay-java](https://github.com/qpay-sdk/qpay-java), this package provides auto-configuration, a `QPayTemplate` helper, webhook controller with Spring events, and Thymeleaf fragments.
 
 - **GitHub**: [qpay-sdk/qpay-spring-boot-starter](https://github.com/qpay-sdk/qpay-spring-boot-starter)
+- **Maven Central**: [mn.qpay:qpay-spring-boot-starter](https://central.sonatype.com/artifact/mn.qpay/qpay-spring-boot-starter)
+- **Requirements**: Java 17+, Spring Boot 3.2+
+
+---
 
 ## Installation
+
+### Maven
 
 ```xml
 <dependency>
@@ -14,7 +20,19 @@ QPay V2 payment starter for Spring Boot. Wraps [qpay-java](https://github.com/qp
 </dependency>
 ```
 
+### Gradle
+
+```groovy
+implementation 'mn.qpay:qpay-spring-boot-starter:1.0.0'
+```
+
+The starter automatically configures a `QPayClient` bean and `QPayTemplate` bean when the application starts.
+
+---
+
 ## Configuration
+
+### application.properties
 
 ```properties
 qpay.base-url=https://merchant.qpay.mn
@@ -22,29 +40,312 @@ qpay.username=your_username
 qpay.password=your_password
 qpay.invoice-code=your_invoice_code
 qpay.callback-url=https://yoursite.com/qpay/webhook
+qpay.webhook-path=/qpay/webhook
 ```
 
-## Usage
+### application.yml
+
+```yaml
+qpay:
+  base-url: https://merchant.qpay.mn
+  username: your_username
+  password: your_password
+  invoice-code: your_invoice_code
+  callback-url: https://yoursite.com/qpay/webhook
+  webhook-path: /qpay/webhook
+```
+
+### Configuration Properties
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `qpay.base-url` | `https://merchant.qpay.mn` | QPay API base URL |
+| `qpay.username` | -- | Merchant username |
+| `qpay.password` | -- | Merchant password |
+| `qpay.invoice-code` | -- | Default invoice code |
+| `qpay.callback-url` | -- | Payment callback URL |
+| `qpay.webhook-path` | `/qpay/webhook` | Webhook endpoint path |
+
+---
+
+## Quick Start
+
+```java
+import mn.qpay.spring.QPayTemplate;
+import mn.qpay.sdk.models.InvoiceResponse;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+public class PaymentController {
+
+    private final QPayTemplate qpay;
+
+    public PaymentController(QPayTemplate qpay) {
+        this.qpay = qpay;
+    }
+
+    @PostMapping("/pay")
+    public InvoiceResponse createPayment(@RequestParam String orderId,
+                                          @RequestParam double amount) {
+        return qpay.createSimpleInvoice(orderId, amount);
+    }
+}
+```
+
+---
+
+## Create Invoice
+
+### Simple Invoice (via QPayTemplate)
+
+`QPayTemplate` provides convenient methods that automatically use the configured `invoiceCode` and `callbackUrl`:
 
 ```java
 @Autowired
 private QPayTemplate qpay;
 
+// Uses configured invoice-code and callback-url automatically
 InvoiceResponse invoice = qpay.createSimpleInvoice("ORDER-001", 10000);
+
+// Access response fields
+String invoiceId = invoice.getInvoiceId();
+String qrImage = invoice.getQrImage();       // Base64 QR code
+String qrText = invoice.getQrText();         // QR code text
+String shortUrl = invoice.getQPayShortUrl(); // Short payment URL
+List<PaymentUrl> urls = invoice.getUrls();   // Bank deep links
 ```
 
-## Webhook Events
+### Full Invoice (via QPayClient)
+
+For advanced use cases, access the underlying `QPayClient` directly:
 
 ```java
-@EventListener
-public void onPayment(QPayWebhookEvent event) {
-    String invoiceId = event.getInvoiceId();
+import mn.qpay.sdk.QPayClient;
+import mn.qpay.sdk.models.*;
+
+QPayClient client = qpay.getClient();
+
+CreateInvoiceRequest request = new CreateInvoiceRequest();
+request.setInvoiceCode("YOUR_CODE");
+request.setSenderInvoiceNo("ORDER-001");
+request.setInvoiceReceiverCode("receiver_001");
+request.setInvoiceDescription("Payment for Order #001");
+request.setAmount(10000);
+request.setCallbackURL("https://yoursite.com/qpay/webhook");
+
+InvoiceResponse invoice = client.createInvoice(request);
+```
+
+### Check Payment
+
+```java
+PaymentCheckResponse result = qpay.checkPayment("INVOICE_ID");
+
+if (result.getRows() != null && !result.getRows().isEmpty()) {
+    // Payment confirmed
 }
 ```
 
-## Thymeleaf
+---
+
+## Webhook Handling
+
+The starter includes a built-in `QPayWebhookController` that handles `POST` requests at the configured webhook path (default: `/qpay/webhook`).
+
+When QPay sends a callback:
+
+1. The controller extracts `invoice_id` from the JSON body
+2. Calls `checkPayment` to verify the payment
+3. Publishes a `QPayWebhookEvent` via Spring's `ApplicationEventPublisher` if payment is confirmed
+4. Returns a JSON response with the status
+
+The webhook endpoint is automatically registered as:
+
+```java
+@PostMapping("${qpay.webhook-path:/qpay/webhook}")
+```
+
+---
+
+## Events
+
+### QPayWebhookEvent
+
+The starter uses Spring's application event system. Listen for payment events with `@EventListener`:
+
+```java
+import mn.qpay.spring.QPayWebhookEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.stereotype.Component;
+
+@Component
+public class PaymentEventListener {
+
+    @EventListener
+    public void onPayment(QPayWebhookEvent event) {
+        String invoiceId = event.getInvoiceId();
+        PaymentCheckResponse result = event.getResult();
+
+        // Update order status, send notification, etc.
+        orderService.markAsPaid(invoiceId);
+    }
+}
+```
+
+### Async Event Handling
+
+Enable async processing with Spring's `@Async`:
+
+```java
+@Component
+public class AsyncPaymentListener {
+
+    @Async
+    @EventListener
+    public void onPayment(QPayWebhookEvent event) {
+        // Runs in a separate thread
+        processPayment(event.getInvoiceId());
+    }
+}
+```
+
+---
+
+## Thymeleaf Fragments
+
+The starter includes Thymeleaf template fragments for rendering QR codes and payment buttons.
+
+### QR Code
 
 ```html
 <div th:replace="~{fragments/qpay :: qr-code(${invoice.qrImage}, 256)}"></div>
+```
+
+Renders a centered QR code image. The second parameter is the size in pixels (defaults to 256).
+
+### Payment Buttons
+
+```html
 <div th:replace="~{fragments/qpay :: payment-buttons(${invoice.urls})}"></div>
 ```
+
+Renders a flex container with styled bank payment link buttons, each showing the bank logo and name.
+
+### Full Page Example
+
+```html
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+    <h1>Payment</h1>
+
+    <div th:replace="~{fragments/qpay :: qr-code(${invoice.qrImage}, 256)}"></div>
+
+    <h2>Pay with Bank App</h2>
+    <div th:replace="~{fragments/qpay :: payment-buttons(${invoice.urls})}"></div>
+</body>
+</html>
+```
+
+---
+
+## Testing
+
+### Mocking QPayTemplate
+
+```java
+import mn.qpay.spring.QPayTemplate;
+import mn.qpay.sdk.models.InvoiceResponse;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.mock.mockito.MockBean;
+
+import static org.mockito.Mockito.*;
+
+@SpringBootTest
+class PaymentControllerTest {
+
+    @MockBean
+    private QPayTemplate qPayTemplate;
+
+    @Test
+    void testCreateInvoice() {
+        InvoiceResponse mockInvoice = new InvoiceResponse();
+        mockInvoice.setInvoiceId("inv_123");
+        mockInvoice.setQrImage("base64data");
+
+        when(qPayTemplate.createSimpleInvoice("ORDER-001", 10000))
+            .thenReturn(mockInvoice);
+
+        // Your test assertions
+    }
+}
+```
+
+### Testing Webhook Events
+
+```java
+import mn.qpay.spring.QPayWebhookEvent;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
+
+@SpringBootTest
+@RecordApplicationEvents
+class WebhookTest {
+
+    @Autowired
+    ApplicationEvents events;
+
+    @Test
+    void testWebhookFiresEvent() {
+        // Trigger webhook...
+
+        long count = events.stream(QPayWebhookEvent.class).count();
+        assertEquals(1, count);
+    }
+}
+```
+
+---
+
+## API Reference
+
+### Auto-configured Beans
+
+| Bean | Type | Description |
+|------|------|-------------|
+| `qPayClient` | `mn.qpay.sdk.QPayClient` | Core QPay HTTP client |
+| `qPayTemplate` | `mn.qpay.spring.QPayTemplate` | Convenience wrapper with defaults |
+
+### QPayTemplate Methods
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `createSimpleInvoice(String senderInvoiceNo, double amount)` | `InvoiceResponse` | Create invoice with configured defaults |
+| `checkPayment(String invoiceId)` | `PaymentCheckResponse` | Check payment status for an invoice |
+| `getClient()` | `QPayClient` | Access the underlying client |
+
+### QPayProperties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `baseUrl` | `String` | QPay API base URL |
+| `username` | `String` | Merchant username |
+| `password` | `String` | Merchant password |
+| `invoiceCode` | `String` | Default invoice code |
+| `callbackUrl` | `String` | Payment callback URL |
+| `webhookPath` | `String` | Webhook endpoint path |
+
+### QPayWebhookEvent
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `getInvoiceId()` | `String` | QPay invoice ID |
+| `getResult()` | `PaymentCheckResponse` | Full payment check response |
+
+---
+
+## Links
+
+- **GitHub**: [github.com/qpay-sdk/qpay-spring-boot-starter](https://github.com/qpay-sdk/qpay-spring-boot-starter)
+- **Maven Central**: [mn.qpay:qpay-spring-boot-starter](https://central.sonatype.com/artifact/mn.qpay/qpay-spring-boot-starter)
+- **Base SDK**: [qpay-java](/sdks/java)

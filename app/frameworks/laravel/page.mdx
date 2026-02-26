@@ -1,19 +1,50 @@
 # Laravel
 
-QPay V2 payment integration for Laravel. Wraps [qpay-php](https://github.com/qpay-sdk/qpay-php) SDK.
+QPay V2 payment integration for Laravel 10+. Built on top of [qpay-php](https://github.com/qpay-sdk/qpay-php), this package provides a service provider, Facade, Blade components, webhook controller, and Laravel events.
 
 - **GitHub**: [qpay-sdk/qpay-laravel](https://github.com/qpay-sdk/qpay-laravel)
+- **Packagist**: [qpay-sdk/laravel](https://packagist.org/packages/qpay-sdk/laravel)
+- **Requirements**: PHP 8.1+, Laravel 10 or 11
+
+---
 
 ## Installation
 
 ```bash
 composer require qpay-sdk/laravel
+```
+
+Run the install command to publish the config file:
+
+```bash
 php artisan qpay:install
 ```
 
+This publishes `config/qpay.php` and displays the required environment variables.
+
+### Manual Setup (Optional)
+
+If you prefer not to use the install command, publish the config manually:
+
+```bash
+php artisan vendor:publish --tag=qpay-config
+```
+
+To publish the Blade view templates for customization:
+
+```bash
+php artisan vendor:publish --tag=qpay-views
+```
+
+> The service provider and Facade alias are auto-discovered via `composer.json` -- no manual registration needed.
+
+---
+
 ## Configuration
 
-Add to `.env`:
+### Environment Variables
+
+Add the following to your `.env` file:
 
 ```
 QPAY_BASE_URL=https://merchant.qpay.mn
@@ -23,7 +54,58 @@ QPAY_INVOICE_CODE=your_invoice_code
 QPAY_CALLBACK_URL=https://yoursite.com/qpay/webhook
 ```
 
-## Usage
+### Config File
+
+The published `config/qpay.php` file:
+
+```php
+return [
+    'base_url'     => env('QPAY_BASE_URL', 'https://merchant.qpay.mn'),
+    'username'     => env('QPAY_USERNAME'),
+    'password'     => env('QPAY_PASSWORD'),
+    'invoice_code' => env('QPAY_INVOICE_CODE'),
+    'callback_url' => env('QPAY_CALLBACK_URL'),
+    'webhook_path' => env('QPAY_WEBHOOK_PATH', '/qpay/webhook'),
+];
+```
+
+| Key | Env Variable | Default | Description |
+|-----|-------------|---------|-------------|
+| `base_url` | `QPAY_BASE_URL` | `https://merchant.qpay.mn` | QPay API base URL |
+| `username` | `QPAY_USERNAME` | -- | Merchant username |
+| `password` | `QPAY_PASSWORD` | -- | Merchant password |
+| `invoice_code` | `QPAY_INVOICE_CODE` | -- | Default invoice code |
+| `callback_url` | `QPAY_CALLBACK_URL` | -- | Payment callback URL |
+| `webhook_path` | `QPAY_WEBHOOK_PATH` | `/qpay/webhook` | Webhook endpoint path |
+
+---
+
+## Quick Start
+
+```php
+use QPay\Laravel\Facades\QPay;
+use QPay\Models\CreateSimpleInvoiceRequest;
+
+// Create an invoice
+$invoice = QPay::createSimpleInvoice(new CreateSimpleInvoiceRequest(
+    invoiceCode: config('qpay.invoice_code'),
+    senderInvoiceNo: 'ORDER-001',
+    amount: 10000,
+    callbackUrl: config('qpay.callback_url'),
+));
+
+// $invoice->invoiceId  -- QPay invoice ID
+// $invoice->qrImage    -- Base64-encoded QR code image
+// $invoice->qrText     -- QR code text for rendering
+// $invoice->qPayShortUrl -- Short URL for payment
+// $invoice->urls       -- Array of bank deep links
+```
+
+---
+
+## Create Invoice
+
+### Simple Invoice
 
 ```php
 use QPay\Laravel\Facades\QPay;
@@ -31,25 +113,270 @@ use QPay\Models\CreateSimpleInvoiceRequest;
 
 $invoice = QPay::createSimpleInvoice(new CreateSimpleInvoiceRequest(
     invoiceCode: config('qpay.invoice_code'),
-    senderInvoiceNo: 'ORDER-001',
-    amount: 10000,
+    senderInvoiceNo: 'ORDER-' . $order->id,
+    amount: $order->total,
     callbackUrl: config('qpay.callback_url'),
 ));
 ```
 
-## Blade Components
+### Full Invoice (Advanced)
 
-```blade
-<x-qpay-qr-code :qr-image="$invoice->qrImage" />
-<x-qpay-payment-button :urls="$invoice->urls" :short-url="$invoice->qPayShortUrl" />
+```php
+use QPay\Laravel\Facades\QPay;
+use QPay\Models\CreateInvoiceRequest;
+
+$invoice = QPay::createInvoice(new CreateInvoiceRequest(
+    invoiceCode: config('qpay.invoice_code'),
+    senderInvoiceNo: 'ORDER-' . $order->id,
+    invoiceReceiverCode: 'receiver_001',
+    invoiceDescription: 'Payment for Order #' . $order->id,
+    amount: $order->total,
+    callbackUrl: config('qpay.callback_url'),
+));
 ```
 
-## Webhook
+### Cancel Invoice
+
+```php
+QPay::cancelInvoice($invoiceId);
+```
+
+### Check Payment Status
+
+```php
+use QPay\Models\PaymentCheckRequest;
+
+$result = QPay::checkPayment(new PaymentCheckRequest(
+    objectType: 'INVOICE',
+    objectId: $invoiceId,
+));
+
+if (count($result->rows) > 0) {
+    // Payment confirmed
+}
+```
+
+### List Payments
+
+```php
+use QPay\Models\PaymentListRequest;
+
+$payments = QPay::listPayments(new PaymentListRequest(
+    objectType: 'INVOICE',
+    objectId: $invoiceId,
+));
+```
+
+### Get Payment Detail
+
+```php
+$payment = QPay::getPayment($paymentId);
+```
+
+---
+
+## Webhook Handling
+
+The package automatically registers a webhook route at the configured path (default: `/qpay/webhook`). The route is excluded from CSRF verification.
+
+When QPay sends a callback, the webhook controller:
+
+1. Extracts the `invoice_id` from the request body
+2. Calls `checkPayment` to verify the payment
+3. Dispatches a `PaymentReceived` event if payment rows are found
+4. Dispatches a `PaymentFailed` event if no payment is found or an error occurs
+5. Returns a JSON response with the status
+
+### Webhook Route
+
+The route is registered automatically in `routes/qpay.php`:
+
+```php
+Route::post(config('qpay.webhook_path', '/qpay/webhook'), WebhookController::class)
+    ->name('qpay.webhook')
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
+```
+
+You can customize the webhook path via the `QPAY_WEBHOOK_PATH` environment variable.
+
+---
+
+## Events
+
+The package dispatches two Laravel events:
+
+### PaymentReceived
+
+Fired when a payment is confirmed (at least one payment row found).
 
 ```php
 use QPay\Laravel\Events\PaymentReceived;
 
-Event::listen(PaymentReceived::class, function ($event) {
-    // $event->invoiceId, $event->result
+// In EventServiceProvider or using Event::listen
+Event::listen(PaymentReceived::class, function (PaymentReceived $event) {
+    $event->invoiceId;  // string -- QPay invoice ID
+    $event->result;     // PaymentCheckResponse -- Full check result
+
+    // Example: Update your order status
+    $order = Order::where('qpay_invoice_id', $event->invoiceId)->first();
+    $order->update(['status' => 'paid']);
 });
 ```
+
+### PaymentFailed
+
+Fired when no payment is found or when an error occurs during verification.
+
+```php
+use QPay\Laravel\Events\PaymentFailed;
+
+Event::listen(PaymentFailed::class, function (PaymentFailed $event) {
+    $event->invoiceId;  // string -- QPay invoice ID
+    $event->reason;     // string -- Failure reason
+
+    Log::warning("QPay payment failed for {$event->invoiceId}: {$event->reason}");
+});
+```
+
+---
+
+## Blade Components
+
+### QR Code
+
+Renders the QPay QR code image.
+
+```blade
+<x-qpay-qr-code :qr-image="$invoice->qrImage" />
+
+{{-- With custom size --}}
+<x-qpay-qr-code :qr-image="$invoice->qrImage" :size="200" />
+
+{{-- Using QR text instead of image --}}
+<x-qpay-qr-code :qr-text="$invoice->qrText" />
+```
+
+**Props:**
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `qr-image` | string | `''` | Base64-encoded QR code image |
+| `qr-text` | string | `''` | QR code text to render |
+| `size` | int | `256` | QR code width/height in pixels |
+
+### Payment Button
+
+Renders bank deep link buttons.
+
+```blade
+<x-qpay-payment-button :urls="$invoice->urls" :short-url="$invoice->qPayShortUrl" />
+```
+
+**Props:**
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `urls` | array | `[]` | Bank deep link URLs from invoice response |
+| `short-url` | string | `''` | QPay short URL for payment |
+
+### Customizing Views
+
+Publish the views and edit them:
+
+```bash
+php artisan vendor:publish --tag=qpay-views
+```
+
+Published to `resources/views/vendor/qpay/`.
+
+---
+
+## Testing
+
+Use Laravel's built-in mocking to test QPay integration.
+
+### Mocking the Client
+
+```php
+use QPay\QPayClient;
+use QPay\Models\PaymentCheckResponse;
+
+// In your test
+$mockResult = new PaymentCheckResponse(
+    count: 1,
+    paidAmount: 10000.0,
+    rows: [(object)['paymentId' => 'pay_123']],
+);
+
+$mock = $this->createMock(QPayClient::class);
+$mock->method('checkPayment')->willReturn($mockResult);
+$this->app->instance(QPayClient::class, $mock);
+```
+
+### Testing Webhook Events
+
+```php
+use Illuminate\Support\Facades\Event;
+use QPay\Laravel\Events\PaymentReceived;
+
+Event::fake();
+
+$this->postJson('/qpay/webhook', ['invoice_id' => 'inv_123']);
+
+Event::assertDispatched(PaymentReceived::class, function ($event) {
+    return $event->invoiceId === 'inv_123';
+});
+```
+
+### Testing with Testbench
+
+The package uses [Orchestra Testbench](https://github.com/orchestral/testbench) for testing:
+
+```php
+use Orchestra\Testbench\TestCase;
+use QPay\Laravel\QPayServiceProvider;
+
+class MyTest extends TestCase
+{
+    protected function getPackageProviders($app): array
+    {
+        return [QPayServiceProvider::class];
+    }
+}
+```
+
+---
+
+## API Reference
+
+### Facade Methods (`QPay::`)
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `createInvoice(CreateInvoiceRequest $req)` | `InvoiceResponse` | Create a full invoice |
+| `createSimpleInvoice(CreateSimpleInvoiceRequest $req)` | `InvoiceResponse` | Create a simple invoice |
+| `cancelInvoice(string $invoiceId)` | `void` | Cancel an invoice |
+| `getPayment(string $paymentId)` | `PaymentDetail` | Get payment details |
+| `checkPayment(PaymentCheckRequest $req)` | `PaymentCheckResponse` | Check payment status |
+| `listPayments(PaymentListRequest $req)` | `PaymentListResponse` | List payments |
+
+### Classes
+
+| Class | Namespace | Description |
+|-------|-----------|-------------|
+| `QPayServiceProvider` | `QPay\Laravel` | Auto-discovered service provider |
+| `QPay` (Facade) | `QPay\Laravel\Facades` | Facade for `QPayClient` |
+| `WebhookController` | `QPay\Laravel\Http\Controllers` | Webhook endpoint handler |
+| `PaymentReceived` | `QPay\Laravel\Events` | Event dispatched on payment success |
+| `PaymentFailed` | `QPay\Laravel\Events` | Event dispatched on payment failure |
+| `QrCode` | `QPay\Laravel\Components` | Blade component for QR codes |
+| `PaymentButton` | `QPay\Laravel\Components` | Blade component for bank links |
+| `InstallCommand` | `QPay\Laravel\Console` | `qpay:install` artisan command |
+
+---
+
+## Links
+
+- **GitHub**: [github.com/qpay-sdk/qpay-laravel](https://github.com/qpay-sdk/qpay-laravel)
+- **Packagist**: [packagist.org/packages/qpay-sdk/laravel](https://packagist.org/packages/qpay-sdk/laravel)
+- **Base SDK**: [qpay-php](/sdks/php)

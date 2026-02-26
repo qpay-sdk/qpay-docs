@@ -1,25 +1,211 @@
 # Flutter
 
-QPay V2 payment UI widgets for Flutter. Wraps [qpay](https://github.com/qpay-sdk/qpay-dart) Dart SDK.
+QPay V2 payment UI widgets for Flutter. Built on top of the [qpay](https://github.com/qpay-sdk/qpay-dart) Dart SDK, this package provides ready-to-use Flutter widgets for QR codes, bank lists, payment sheets, deep link handling, payment polling, and customizable theming.
 
 - **GitHub**: [qpay-sdk/qpay-flutter](https://github.com/qpay-sdk/qpay-flutter)
+- **pub.dev**: [qpay_flutter](https://pub.dev/packages/qpay_flutter)
+- **Requirements**: Dart 3.0+, Flutter 3.10+
+
+---
 
 ## Installation
+
+Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
   qpay_flutter: ^1.0.0
 ```
 
-## Widgets
+Then run:
 
-### QR Code
-
-```dart
-QPayQrCode(qrText: invoice.qrText)
+```bash
+flutter pub get
 ```
 
-### Payment Sheet (Bottom Sheet)
+### Dependencies
+
+The package depends on:
+- `qpay: ^1.0.0` -- QPay Dart SDK for API calls
+- `qr_flutter: ^4.1.0` -- QR code rendering
+- `url_launcher: ^6.2.0` -- Deep link launching for bank apps
+
+---
+
+## Configuration
+
+Configure the QPay Dart SDK client in your app (the Flutter package uses the client from the base SDK):
+
+```dart
+import 'package:qpay/qpay.dart';
+
+final config = QPayConfig(
+  baseUrl: 'https://merchant.qpay.mn',
+  username: 'your_username',
+  password: 'your_password',
+  invoiceCode: 'YOUR_CODE',
+  callbackUrl: 'https://yoursite.com/qpay/webhook',
+);
+
+final client = QPayClient(config);
+```
+
+### Environment-based Config
+
+For production, use environment variables or a config file:
+
+```dart
+final config = QPayConfig(
+  baseUrl: const String.fromEnvironment('QPAY_BASE_URL',
+      defaultValue: 'https://merchant.qpay.mn'),
+  username: const String.fromEnvironment('QPAY_USERNAME'),
+  password: const String.fromEnvironment('QPAY_PASSWORD'),
+  invoiceCode: const String.fromEnvironment('QPAY_INVOICE_CODE'),
+  callbackUrl: const String.fromEnvironment('QPAY_CALLBACK_URL'),
+);
+```
+
+---
+
+## Quick Start
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:qpay/qpay.dart';
+import 'package:qpay_flutter/qpay_flutter.dart';
+
+class PaymentScreen extends StatefulWidget {
+  @override
+  _PaymentScreenState createState() => _PaymentScreenState();
+}
+
+class _PaymentScreenState extends State<PaymentScreen> {
+  late QPayClient client;
+  InvoiceResponse? invoice;
+
+  @override
+  void initState() {
+    super.initState();
+    client = QPayClient(QPayConfig(
+      baseUrl: 'https://merchant.qpay.mn',
+      username: 'your_username',
+      password: 'your_password',
+    ));
+    _createInvoice();
+  }
+
+  Future<void> _createInvoice() async {
+    final result = await client.createSimpleInvoice(
+      invoiceCode: 'YOUR_CODE',
+      senderInvoiceNo: 'ORDER-001',
+      amount: 10000,
+      callbackUrl: 'https://yoursite.com/qpay/webhook',
+    );
+    setState(() => invoice = result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (invoice == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Payment')),
+      body: Column(
+        children: [
+          QPayQrCode(qrText: invoice!.qrText),
+          const SizedBox(height: 16),
+          QPayPaymentButton(
+            qrText: invoice!.qrText,
+            banks: invoice!.urls.map((u) => QPayBankItem(
+              name: u.name,
+              logo: u.logo,
+              link: u.link,
+            )).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+```
+
+---
+
+## UI Components
+
+### QPayQrCode
+
+Renders a QR code from the invoice's `qrText` field.
+
+```dart
+QPayQrCode(
+  qrText: invoice.qrText,
+  size: 256,  // optional, default 256
+)
+```
+
+**Properties:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `qrText` | `String` | required | QR code text from invoice response |
+| `size` | `double` | `256` | Width and height of the QR code |
+
+Uses the `qr_flutter` package internally with `QrImageView`.
+
+---
+
+### QPayBankList
+
+Renders a vertical list of bank app buttons with logos and deep links.
+
+```dart
+QPayBankList(
+  banks: [
+    QPayBankItem(
+      name: 'Khan Bank',
+      logo: 'https://example.com/khan.png',
+      link: 'khanbank://qpay?...',
+    ),
+    QPayBankItem(
+      name: 'Golomt Bank',
+      logo: 'https://example.com/golomt.png',
+      link: 'golomtbank://qpay?...',
+    ),
+  ],
+)
+```
+
+Each item renders as a `ListTile` with the bank logo, name, and optional description. Tapping opens the bank app via deep link.
+
+**QPayBankItem Properties:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `name` | `String` | required | Bank name |
+| `description` | `String` | `''` | Optional description |
+| `logo` | `String` | `''` | Bank logo URL |
+| `link` | `String` | required | Deep link URL |
+
+---
+
+### QPayPaymentSheet
+
+A bottom sheet that combines QR code and bank list into a single payment UI.
+
+#### As a Widget
+
+```dart
+QPayPaymentSheet(
+  qrText: invoice.qrText,
+  banks: bankItems,
+  title: 'QPay Payment',  // optional
+)
+```
+
+#### Show as Modal Bottom Sheet
 
 ```dart
 QPayPaymentSheet.show(
@@ -30,26 +216,357 @@ QPayPaymentSheet.show(
     logo: u.logo,
     link: u.link,
   )).toList(),
+  title: 'Pay for Order #001',  // optional
 );
 ```
 
-### Payment Button
+**Properties:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `qrText` | `String` | required | QR code text |
+| `banks` | `List<QPayBankItem>` | required | Bank items for deep links |
+| `title` | `String?` | `null` | Sheet title (defaults to Mongolian text) |
+
+The sheet is a `DraggableScrollableSheet` with:
+- Initial size: 75% of screen
+- Max size: 95% of screen
+- Min size: 50% of screen
+
+---
+
+### QPayPaymentButton
+
+An elevated button that opens the `QPayPaymentSheet` when tapped.
 
 ```dart
 QPayPaymentButton(
   qrText: invoice.qrText,
   banks: bankItems,
+  label: 'Pay with QPay',  // optional
+  onPressed: () {           // optional, overrides default behavior
+    // Custom action
+  },
 )
 ```
 
-### Payment Poller
+**Properties:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `qrText` | `String` | required | QR code text |
+| `banks` | `List<QPayBankItem>` | required | Bank items |
+| `label` | `String` | Mongolian default | Button label text |
+| `onPressed` | `VoidCallback?` | `null` | Custom tap handler (overrides sheet) |
+
+Styled with `QPayTheme.primaryButton` by default.
+
+---
+
+## Deep Link Handling
+
+The `QPayDeepLinkHandler` utility launches bank app deep links:
 
 ```dart
+import 'package:qpay_flutter/qpay_flutter.dart';
+
+// Launch a bank app
+final success = await QPayDeepLinkHandler.launch('khanbank://qpay?invoice=...');
+
+if (!success) {
+  // Bank app not installed, show fallback UI
+}
+```
+
+The handler uses the `url_launcher` package and launches URLs in `LaunchMode.externalApplication` mode.
+
+---
+
+## Payment Polling
+
+The `PaymentPoller` utility polls for payment status at regular intervals:
+
+```dart
+import 'package:qpay_flutter/qpay_flutter.dart';
+
 final poller = PaymentPoller(
-  checker: (id) async {
-    final result = await client.checkPayment(...);
+  checker: (invoiceId) async {
+    final result = await client.checkPayment(
+      objectType: 'INVOICE',
+      objectId: invoiceId,
+    );
     return result.rows.isNotEmpty;
   },
+  interval: Duration(seconds: 3),  // optional, default 3s
+  timeout: Duration(minutes: 5),   // optional, default 5min
 );
+
 final paid = await poller.poll(invoice.invoiceId);
+
+if (paid) {
+  // Navigate to success screen
+  Navigator.pushReplacementNamed(context, '/payment-success');
+} else {
+  // Timeout - payment not received
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('Payment timed out')),
+  );
+}
 ```
+
+**Properties:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `checker` | `Future<bool> Function(String)` | required | Async function that checks payment status |
+| `interval` | `Duration` | 3 seconds | Time between polling attempts |
+| `timeout` | `Duration` | 5 minutes | Maximum time to poll before giving up |
+
+**Returns:** `Future<bool>` -- `true` if payment was found, `false` if timeout was reached.
+
+---
+
+## Theme
+
+The `QPayTheme` class provides consistent styling for all QPay widgets:
+
+```dart
+import 'package:qpay_flutter/qpay_flutter.dart';
+
+// Access theme colors
+QPayTheme.primaryColor     // Color(0xFF00B462) -- QPay green
+QPayTheme.primaryDark      // Color(0xFF009E56)
+QPayTheme.textColor        // Color(0xFF333333)
+QPayTheme.borderColor      // Color(0xFFDDDDDD)
+QPayTheme.backgroundColor  // Color(0xFFFFFFFF)
+
+// Access button style
+QPayTheme.primaryButton    // ElevatedButton.styleFrom(...)
+```
+
+### Theme Constants
+
+| Constant | Type | Value | Description |
+|----------|------|-------|-------------|
+| `primaryColor` | `Color` | `#00B462` | Primary QPay green |
+| `primaryDark` | `Color` | `#009E56` | Darker green variant |
+| `textColor` | `Color` | `#333333` | Default text color |
+| `borderColor` | `Color` | `#DDDDDD` | Border color |
+| `backgroundColor` | `Color` | `#FFFFFF` | Background color |
+| `primaryButton` | `ButtonStyle` | -- | Styled ElevatedButton with QPay colors |
+
+---
+
+## Complete Example
+
+A full payment flow with invoice creation, QR display, bank selection, and payment polling:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:qpay/qpay.dart';
+import 'package:qpay_flutter/qpay_flutter.dart';
+
+class FullPaymentScreen extends StatefulWidget {
+  final double amount;
+  final String orderId;
+
+  const FullPaymentScreen({required this.amount, required this.orderId});
+
+  @override
+  _FullPaymentScreenState createState() => _FullPaymentScreenState();
+}
+
+class _FullPaymentScreenState extends State<FullPaymentScreen> {
+  final client = QPayClient(QPayConfig(/* ... */));
+  InvoiceResponse? invoice;
+  bool isPolling = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _createInvoice();
+  }
+
+  Future<void> _createInvoice() async {
+    final result = await client.createSimpleInvoice(
+      invoiceCode: 'YOUR_CODE',
+      senderInvoiceNo: 'ORDER-${widget.orderId}',
+      amount: widget.amount,
+      callbackUrl: 'https://yoursite.com/qpay/webhook',
+    );
+    setState(() => invoice = result);
+    _startPolling();
+  }
+
+  Future<void> _startPolling() async {
+    setState(() => isPolling = true);
+
+    final poller = PaymentPoller(
+      checker: (id) async {
+        final result = await client.checkPayment(
+          objectType: 'INVOICE', objectId: id,
+        );
+        return result.rows.isNotEmpty;
+      },
+    );
+
+    final paid = await poller.poll(invoice!.invoiceId);
+    setState(() => isPolling = false);
+
+    if (paid && mounted) {
+      Navigator.pushReplacementNamed(context, '/success');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (invoice == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    final banks = invoice!.urls
+        .map((u) => QPayBankItem(name: u.name, logo: u.logo, link: u.link))
+        .toList();
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Payment')),
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            QPayQrCode(qrText: invoice!.qrText, size: 200),
+            const SizedBox(height: 24),
+            if (isPolling)
+              const Text('Waiting for payment...',
+                  style: TextStyle(color: Colors.grey)),
+            const SizedBox(height: 16),
+            Expanded(child: QPayBankList(banks: banks)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+---
+
+## Testing
+
+### Widget Testing
+
+```dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:qpay_flutter/qpay_flutter.dart';
+
+void main() {
+  testWidgets('QPayQrCode renders', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: QPayQrCode(qrText: 'test-qr-data'),
+        ),
+      ),
+    );
+
+    expect(find.byType(QPayQrCode), findsOneWidget);
+  });
+
+  testWidgets('QPayBankList renders bank items', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: QPayBankList(
+            banks: [
+              QPayBankItem(name: 'Khan Bank', link: 'khanbank://test'),
+              QPayBankItem(name: 'Golomt Bank', link: 'golomt://test'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Khan Bank'), findsOneWidget);
+    expect(find.text('Golomt Bank'), findsOneWidget);
+  });
+}
+```
+
+### Testing PaymentPoller
+
+```dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:qpay_flutter/qpay_flutter.dart';
+
+void main() {
+  test('PaymentPoller returns true when payment found', () async {
+    int callCount = 0;
+    final poller = PaymentPoller(
+      checker: (id) async {
+        callCount++;
+        return callCount >= 3;  // Simulate payment on 3rd check
+      },
+      interval: const Duration(milliseconds: 100),
+      timeout: const Duration(seconds: 5),
+    );
+
+    final result = await poller.poll('inv_123');
+    expect(result, true);
+    expect(callCount, 3);
+  });
+
+  test('PaymentPoller returns false on timeout', () async {
+    final poller = PaymentPoller(
+      checker: (id) async => false,
+      interval: const Duration(milliseconds: 50),
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    final result = await poller.poll('inv_123');
+    expect(result, false);
+  });
+}
+```
+
+---
+
+## API Reference
+
+### Widgets
+
+| Widget | Description |
+|--------|-------------|
+| `QPayQrCode` | QR code display widget |
+| `QPayBankList` | Vertical list of bank deep link buttons |
+| `QPayPaymentSheet` | Bottom sheet with QR code and bank list |
+| `QPayPaymentButton` | Button that opens payment sheet |
+
+### Utilities
+
+| Class | Description |
+|-------|-------------|
+| `PaymentPoller` | Polls for payment status at intervals |
+| `QPayDeepLinkHandler` | Launches bank app deep links |
+
+### Data Classes
+
+| Class | Description |
+|-------|-------------|
+| `QPayBankItem` | Bank item with name, logo, description, and link |
+| `QPayTheme` | Theme constants (colors, button styles) |
+
+### Exported Library
+
+```dart
+import 'package:qpay_flutter/qpay_flutter.dart';
+```
+
+This single import gives you access to all widgets, utilities, data classes, and theme constants.
+
+---
+
+## Links
+
+- **GitHub**: [github.com/qpay-sdk/qpay-flutter](https://github.com/qpay-sdk/qpay-flutter)
+- **pub.dev**: [pub.dev/packages/qpay_flutter](https://pub.dev/packages/qpay_flutter)
+- **Base SDK**: [qpay (Dart)](/sdks/dart)

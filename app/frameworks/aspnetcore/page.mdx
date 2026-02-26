@@ -1,18 +1,46 @@
 # ASP.NET Core
 
-QPay V2 payment integration for ASP.NET Core. Wraps [QPay](https://github.com/qpay-sdk/qpay-dotnet) NuGet package.
+QPay V2 payment integration for ASP.NET Core. Built on top of the [QPay](https://github.com/qpay-sdk/qpay-dotnet) NuGet package, this package provides DI service registration, an `IQPayService` interface, webhook middleware, and an event handler pattern.
 
 - **GitHub**: [qpay-sdk/qpay-aspnetcore](https://github.com/qpay-sdk/qpay-aspnetcore)
+- **NuGet**: [QPay.AspNetCore](https://www.nuget.org/packages/QPay.AspNetCore)
+- **Requirements**: .NET 8.0+, ASP.NET Core
+
+---
 
 ## Installation
+
+### .NET CLI
 
 ```bash
 dotnet add package QPay.AspNetCore
 ```
 
+### Package Manager
+
+```bash
+Install-Package QPay.AspNetCore
+```
+
+### PackageReference
+
+```xml
+<PackageReference Include="QPay.AspNetCore" Version="1.0.0" />
+```
+
+---
+
 ## Configuration
 
+### Service Registration
+
+Register QPay services in `Program.cs`:
+
 ```csharp
+using QPay.AspNetCore;
+
+var builder = WebApplication.CreateBuilder(args);
+
 builder.Services.AddQPay(options =>
 {
     options.BaseUrl = "https://merchant.qpay.mn";
@@ -22,42 +50,388 @@ builder.Services.AddQPay(options =>
     options.CallbackUrl = "https://yoursite.com/api/qpay/webhook";
 });
 
+var app = builder.Build();
+
+// Enable webhook middleware
 app.UseQPayWebhook();
+
+app.Run();
 ```
 
-## Usage
+### Reading from Configuration
+
+```csharp
+builder.Services.AddQPay(options =>
+{
+    var section = builder.Configuration.GetSection("QPay");
+    options.BaseUrl = section["BaseUrl"] ?? "https://merchant.qpay.mn";
+    options.Username = section["Username"]!;
+    options.Password = section["Password"]!;
+    options.InvoiceCode = section["InvoiceCode"]!;
+    options.CallbackUrl = section["CallbackUrl"]!;
+});
+```
+
+### appsettings.json
+
+```json
+{
+  "QPay": {
+    "BaseUrl": "https://merchant.qpay.mn",
+    "Username": "your_username",
+    "Password": "your_password",
+    "InvoiceCode": "YOUR_CODE",
+    "CallbackUrl": "https://yoursite.com/api/qpay/webhook"
+  }
+}
+```
+
+### Environment Variables
+
+```bash
+QPay__BaseUrl=https://merchant.qpay.mn
+QPay__Username=your_username
+QPay__Password=your_password
+QPay__InvoiceCode=YOUR_CODE
+QPay__CallbackUrl=https://yoursite.com/api/qpay/webhook
+```
+
+### QPayOptions
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `BaseUrl` | `string` | `https://merchant.qpay.mn` | QPay API base URL |
+| `Username` | `string` | `""` | Merchant username |
+| `Password` | `string` | `""` | Merchant password |
+| `InvoiceCode` | `string` | `""` | Default invoice code |
+| `CallbackUrl` | `string` | `""` | Payment callback URL |
+| `WebhookPath` | `string` | `/api/qpay/webhook` | Webhook endpoint path |
+
+---
+
+## Quick Start
+
+```csharp
+using QPay.AspNetCore;
+using QPay.Models;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddQPay(options =>
+{
+    options.BaseUrl = "https://merchant.qpay.mn";
+    options.Username = "your_username";
+    options.Password = "your_password";
+    options.InvoiceCode = "YOUR_CODE";
+    options.CallbackUrl = "https://yoursite.com/api/qpay/webhook";
+});
+
+var app = builder.Build();
+app.UseQPayWebhook();
+
+app.MapPost("/pay", async (IQPayService qpay) =>
+{
+    var invoice = await qpay.CreateSimpleInvoiceAsync(new CreateSimpleInvoiceRequest
+    {
+        InvoiceCode = "YOUR_CODE",
+        SenderInvoiceNo = "ORDER-001",
+        Amount = 10000,
+        CallbackUrl = "https://yoursite.com/api/qpay/webhook",
+    });
+    return Results.Ok(invoice);
+});
+
+app.Run();
+```
+
+---
+
+## Create Invoice
+
+### Simple Invoice
 
 ```csharp
 public class PaymentController : ControllerBase
 {
     private readonly IQPayService _qpay;
+
     public PaymentController(IQPayService qpay) => _qpay = qpay;
 
     [HttpPost("pay")]
-    public async Task<IActionResult> Pay()
+    public async Task<IActionResult> CreatePayment([FromBody] OrderRequest request)
     {
         var invoice = await _qpay.CreateSimpleInvoiceAsync(new CreateSimpleInvoiceRequest
         {
             InvoiceCode = "YOUR_CODE",
-            SenderInvoiceNo = "ORDER-001",
-            Amount = 10000,
+            SenderInvoiceNo = $"ORDER-{request.OrderId}",
+            Amount = request.Amount,
             CallbackUrl = "https://yoursite.com/api/qpay/webhook",
         });
+
+        // invoice.InvoiceId    -- QPay invoice ID
+        // invoice.QrImage      -- Base64 QR code
+        // invoice.QrText       -- QR code text
+        // invoice.QPayShortUrl -- Short payment URL
+        // invoice.Urls         -- Bank deep links
+
         return Ok(invoice);
     }
 }
 ```
 
-## Event Handler
+### Full Invoice
 
 ```csharp
+var invoice = await _qpay.CreateInvoiceAsync(new CreateInvoiceRequest
+{
+    InvoiceCode = "YOUR_CODE",
+    SenderInvoiceNo = "ORDER-001",
+    InvoiceReceiverCode = "receiver_001",
+    InvoiceDescription = "Payment for Order #001",
+    Amount = 10000,
+    CallbackUrl = "https://yoursite.com/api/qpay/webhook",
+});
+```
+
+### Check Payment
+
+```csharp
+var result = await _qpay.CheckPaymentAsync(new PaymentCheckRequest
+{
+    ObjectType = "INVOICE",
+    ObjectId = invoiceId,
+});
+
+if (result.Rows?.Count > 0)
+{
+    // Payment confirmed
+}
+```
+
+### Cancel Invoice
+
+```csharp
+await _qpay.CancelInvoiceAsync(invoiceId);
+```
+
+### Get Payment Detail
+
+```csharp
+var payment = await _qpay.GetPaymentAsync(paymentId);
+```
+
+### List Payments
+
+```csharp
+var payments = await _qpay.ListPaymentsAsync(new PaymentListRequest
+{
+    ObjectType = "INVOICE",
+    ObjectId = invoiceId,
+});
+```
+
+---
+
+## Webhook Handling
+
+### Enabling the Webhook
+
+Add the webhook middleware in `Program.cs`:
+
+```csharp
+var app = builder.Build();
+app.UseQPayWebhook();  // Must be before app.MapControllers()
+app.MapControllers();
+app.Run();
+```
+
+The middleware intercepts `POST` requests to the configured `WebhookPath` (default: `/api/qpay/webhook`).
+
+### Webhook Flow
+
+When QPay sends a callback:
+
+1. The middleware intercepts the request at the webhook path
+2. Extracts `invoice_id` from the JSON body
+3. Calls `CheckPaymentAsync` to verify the payment
+4. If an `IQPayEventHandler` is registered, calls `HandlePaymentAsync` with the event
+5. Returns a JSON response (`{ status: "paid" }` or `{ status: "unpaid" }`)
+
+### Custom Webhook Path
+
+```csharp
+builder.Services.AddQPay(options =>
+{
+    // ...
+    options.WebhookPath = "/custom/webhook/path";
+});
+```
+
+---
+
+## Event Handler
+
+Implement the `IQPayEventHandler` interface to process payment events:
+
+### Define the Handler
+
+```csharp
+using QPay.AspNetCore;
+
 public class MyPaymentHandler : IQPayEventHandler
 {
-    public Task HandlePaymentAsync(QPayPaymentEvent e)
+    private readonly ILogger<MyPaymentHandler> _logger;
+    private readonly OrderService _orderService;
+
+    public MyPaymentHandler(ILogger<MyPaymentHandler> logger, OrderService orderService)
     {
-        if (e.IsPaid) { /* process */ }
-        return Task.CompletedTask;
+        _logger = logger;
+        _orderService = orderService;
+    }
+
+    public async Task HandlePaymentAsync(QPayPaymentEvent paymentEvent)
+    {
+        _logger.LogInformation(
+            "Payment {Status} for invoice {InvoiceId}",
+            paymentEvent.IsPaid ? "confirmed" : "not found",
+            paymentEvent.InvoiceId
+        );
+
+        if (paymentEvent.IsPaid)
+        {
+            await _orderService.MarkAsPaidAsync(paymentEvent.InvoiceId);
+        }
     }
 }
-builder.Services.AddSingleton<IQPayEventHandler, MyPaymentHandler>();
 ```
+
+### Register the Handler
+
+```csharp
+builder.Services.AddSingleton<IQPayEventHandler, MyPaymentHandler>();
+// or with scoped lifetime:
+builder.Services.AddScoped<IQPayEventHandler, MyPaymentHandler>();
+```
+
+### QPayPaymentEvent Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `InvoiceId` | `string` | QPay invoice ID |
+| `IsPaid` | `bool` | Whether payment was confirmed |
+| `Result` | `PaymentCheckResponse?` | Full payment check response |
+
+---
+
+## Testing
+
+### Mocking IQPayService
+
+```csharp
+using Moq;
+
+[Fact]
+public async Task CreatePayment_ReturnsInvoice()
+{
+    var mockService = new Mock<IQPayService>();
+    mockService.Setup(s => s.CreateSimpleInvoiceAsync(It.IsAny<CreateSimpleInvoiceRequest>()))
+        .ReturnsAsync(new InvoiceResponse
+        {
+            InvoiceId = "inv_123",
+            QrImage = "base64data",
+        });
+
+    var controller = new PaymentController(mockService.Object);
+    var result = await controller.CreatePayment(new OrderRequest { OrderId = "001", Amount = 10000 });
+
+    var okResult = Assert.IsType<OkObjectResult>(result);
+    var invoice = Assert.IsType<InvoiceResponse>(okResult.Value);
+    Assert.Equal("inv_123", invoice.InvoiceId);
+}
+```
+
+### Integration Testing with WebApplicationFactory
+
+```csharp
+using Microsoft.AspNetCore.Mvc.Testing;
+using System.Net.Http.Json;
+
+public class WebhookTests : IClassFixture<WebApplicationFactory<Program>>
+{
+    private readonly HttpClient _client;
+
+    public WebhookTests(WebApplicationFactory<Program> factory)
+    {
+        _client = factory.CreateClient();
+    }
+
+    [Fact]
+    public async Task Webhook_ReturnsPaid()
+    {
+        var response = await _client.PostAsJsonAsync("/api/qpay/webhook", new
+        {
+            invoice_id = "inv_123"
+        });
+
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<dynamic>();
+        Assert.Equal("paid", body.status);
+    }
+}
+```
+
+---
+
+## API Reference
+
+### Extension Methods
+
+| Method | Description |
+|--------|-------------|
+| `services.AddQPay(Action<QPayOptions>)` | Register QPay services in DI |
+| `app.UseQPayWebhook()` | Enable webhook middleware |
+
+### IQPayService Interface
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `CreateInvoiceAsync(CreateInvoiceRequest)` | `Task<InvoiceResponse>` | Create a full invoice |
+| `CreateSimpleInvoiceAsync(CreateSimpleInvoiceRequest)` | `Task<InvoiceResponse>` | Create a simple invoice |
+| `CancelInvoiceAsync(string)` | `Task` | Cancel an invoice |
+| `GetPaymentAsync(string)` | `Task<PaymentDetail>` | Get payment details |
+| `CheckPaymentAsync(PaymentCheckRequest)` | `Task<PaymentCheckResponse>` | Check payment status |
+| `ListPaymentsAsync(PaymentListRequest)` | `Task<PaymentListResponse>` | List payments |
+
+### Interfaces
+
+| Interface | Description |
+|-----------|-------------|
+| `IQPayService` | Payment service for DI injection |
+| `IQPayEventHandler` | Event handler for webhook payments |
+
+### Classes
+
+| Class | Description |
+|-------|-------------|
+| `QPayOptions` | Configuration options |
+| `QPayService` | Default implementation of `IQPayService` |
+| `QPayWebhookMiddleware` | Webhook request handling middleware |
+| `QPayPaymentEvent` | Payment event data passed to handler |
+| `QPayServiceCollectionExtensions` | `AddQPay` extension method |
+| `QPayApplicationBuilderExtensions` | `UseQPayWebhook` extension method |
+
+### Registered Services
+
+| Service | Lifetime | Description |
+|---------|----------|-------------|
+| `QPayOptions` | Singleton | Configuration options |
+| `QPayClient` | Singleton | Core HTTP client |
+| `IQPayService` | Singleton | Payment service |
+
+---
+
+## Links
+
+- **GitHub**: [github.com/qpay-sdk/qpay-aspnetcore](https://github.com/qpay-sdk/qpay-aspnetcore)
+- **NuGet**: [nuget.org/packages/QPay.AspNetCore](https://www.nuget.org/packages/QPay.AspNetCore)
+- **Base SDK**: [QPay (.NET)](/sdks/dotnet)

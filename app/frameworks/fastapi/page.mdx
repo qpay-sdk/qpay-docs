@@ -1,8 +1,12 @@
 # FastAPI
 
-QPay V2 payment integration for FastAPI. Wraps [qpay-py](https://github.com/qpay-sdk/qpay-py) SDK.
+QPay V2 payment integration for FastAPI. Built on top of [qpay-py](https://github.com/qpay-sdk/qpay-py), this package provides a pre-built APIRouter, FastAPI dependency injection for the async QPay client, Pydantic settings for configuration, and webhook handling.
 
 - **GitHub**: [qpay-sdk/fastapi-qpay](https://github.com/qpay-sdk/fastapi-qpay)
+- **PyPI**: [fastapi-qpay](https://pypi.org/project/fastapi-qpay/)
+- **Requirements**: Python 3.9+, FastAPI 0.100+, pydantic-settings 2.0+
+
+---
 
 ## Installation
 
@@ -10,19 +14,23 @@ QPay V2 payment integration for FastAPI. Wraps [qpay-py](https://github.com/qpay
 pip install fastapi-qpay
 ```
 
-## Quick Start
+This installs `qpay-py`, `fastapi`, and `pydantic-settings` as dependencies.
 
-```python
-from fastapi import FastAPI
-from fastapi_qpay import qpay_router
+### With Test Dependencies
 
-app = FastAPI()
-app.include_router(qpay_router, prefix="/qpay")
+```bash
+pip install "fastapi-qpay[test]"
 ```
 
-Provides endpoints: `POST /qpay/webhook`, `POST /qpay/invoice`, `GET /qpay/payment/{id}/status`
+Installs `pytest`, `pytest-asyncio`, and `httpx` for testing.
+
+---
 
 ## Configuration
+
+### Environment Variables
+
+The package uses `pydantic-settings` to read configuration from environment variables with the `QPAY_` prefix:
 
 ```bash
 QPAY_BASE_URL=https://merchant.qpay.mn
@@ -32,7 +40,242 @@ QPAY_INVOICE_CODE=your_invoice_code
 QPAY_CALLBACK_URL=https://yoursite.com/qpay/webhook
 ```
 
+### .env File
+
+Pydantic settings automatically reads from a `.env` file:
+
+```
+QPAY_BASE_URL=https://merchant.qpay.mn
+QPAY_USERNAME=your_username
+QPAY_PASSWORD=your_password
+QPAY_INVOICE_CODE=your_invoice_code
+QPAY_CALLBACK_URL=https://yoursite.com/qpay/webhook
+```
+
+### QPaySettings
+
+The `QPaySettings` class is a Pydantic `BaseSettings` model:
+
+```python
+from fastapi_qpay import QPaySettings
+
+settings = QPaySettings()
+# settings.base_url      -- from QPAY_BASE_URL
+# settings.username      -- from QPAY_USERNAME
+# settings.password      -- from QPAY_PASSWORD
+# settings.invoice_code  -- from QPAY_INVOICE_CODE
+# settings.callback_url  -- from QPAY_CALLBACK_URL
+```
+
+| Setting | Env Variable | Default | Description |
+|---------|-------------|---------|-------------|
+| `base_url` | `QPAY_BASE_URL` | `https://merchant.qpay.mn` | QPay API base URL |
+| `username` | `QPAY_USERNAME` | `""` | Merchant username |
+| `password` | `QPAY_PASSWORD` | `""` | Merchant password |
+| `invoice_code` | `QPAY_INVOICE_CODE` | `""` | Default invoice code |
+| `callback_url` | `QPAY_CALLBACK_URL` | `""` | Payment callback URL |
+
+The `to_qpay_config()` method converts settings to a `QPayConfig` object for the base SDK.
+
+---
+
+## Quick Start
+
+### Option 1: Pre-built Router
+
+Mount the pre-built router for instant endpoints:
+
+```python
+from fastapi import FastAPI
+from fastapi_qpay import qpay_router
+
+app = FastAPI()
+app.include_router(qpay_router, prefix="/qpay")
+```
+
+This registers three endpoints:
+- `POST /qpay/webhook` -- Webhook callback handler
+- `POST /qpay/invoice` -- Create a simple invoice
+- `GET /qpay/payment/{invoice_id}/status` -- Check payment status
+
+### Option 2: Custom Router
+
+Create a router with a custom prefix and tags:
+
+```python
+from fastapi import FastAPI
+from fastapi_qpay import create_qpay_router
+
+app = FastAPI()
+
+router = create_qpay_router(prefix="/payments", tags=["payments"])
+app.include_router(router)
+```
+
+### Option 3: Dependency Injection Only
+
+Use the QPay client as a FastAPI dependency in your own routes:
+
+```python
+from fastapi import FastAPI, Depends
+from qpay import AsyncQPayClient, CreateSimpleInvoiceRequest
+from fastapi_qpay import get_qpay_client
+
+app = FastAPI()
+
+@app.post("/pay")
+async def pay(client: AsyncQPayClient = Depends(get_qpay_client)):
+    invoice = await client.create_simple_invoice(CreateSimpleInvoiceRequest(
+        invoice_code="YOUR_CODE",
+        sender_invoice_no="ORDER-001",
+        amount=10000,
+        callback_url="https://yoursite.com/qpay/webhook",
+    ))
+    return invoice
+```
+
+---
+
+## Create Invoice
+
+### Using the Pre-built Router
+
+The `/invoice` endpoint accepts `sender_invoice_no` and `amount` as query parameters:
+
+```bash
+curl -X POST "http://localhost:8000/qpay/invoice?sender_invoice_no=ORDER-001&amount=10000"
+```
+
+It uses the configured `QPAY_INVOICE_CODE` and `QPAY_CALLBACK_URL` from settings.
+
+### Using Dependency Injection
+
+```python
+from fastapi import FastAPI, Depends
+from qpay import AsyncQPayClient, CreateSimpleInvoiceRequest
+from fastapi_qpay import get_qpay_client, QPaySettings
+from fastapi_qpay.config import get_settings
+
+app = FastAPI()
+
+@app.post("/create-invoice")
+async def create_invoice(
+    order_id: str,
+    amount: float,
+    client: AsyncQPayClient = Depends(get_qpay_client),
+    settings: QPaySettings = Depends(get_settings),
+):
+    invoice = await client.create_simple_invoice(CreateSimpleInvoiceRequest(
+        invoice_code=settings.invoice_code,
+        sender_invoice_no=f"ORDER-{order_id}",
+        amount=amount,
+        callback_url=settings.callback_url,
+    ))
+
+    # invoice.invoice_id    -- QPay invoice ID
+    # invoice.qr_image      -- Base64 QR code
+    # invoice.qr_text       -- QR code text
+    # invoice.qpay_short_url -- Short payment URL
+    # invoice.urls          -- Bank deep links
+
+    return invoice
+```
+
+### Full Invoice
+
+```python
+from qpay import CreateInvoiceRequest
+
+invoice = await client.create_invoice(CreateInvoiceRequest(
+    invoice_code="YOUR_CODE",
+    sender_invoice_no="ORDER-001",
+    invoice_receiver_code="receiver_001",
+    invoice_description="Payment for Order #001",
+    amount=10000,
+    callback_url="https://yoursite.com/qpay/webhook",
+))
+```
+
+### Check Payment
+
+```python
+from qpay import PaymentCheckRequest
+
+result = await client.check_payment(PaymentCheckRequest(
+    object_type="INVOICE",
+    object_id=invoice_id,
+))
+
+if result.rows:
+    print("Payment confirmed!")
+```
+
+### Cancel Invoice
+
+```python
+await client.cancel_invoice(invoice_id)
+```
+
+---
+
+## Webhook Handling
+
+### Using the Pre-built Router
+
+The `POST /qpay/webhook` endpoint is included in the pre-built router. It:
+
+1. Accepts a JSON body with `invoice_id` (validated via `WebhookPayload` Pydantic model)
+2. Calls `check_payment` to verify the payment
+3. Returns a `WebhookResponse` with status (`paid`, `unpaid`, or `error`)
+
+### Standalone Webhook Handler
+
+You can also use the `webhook_handler` function directly:
+
+```python
+from fastapi import FastAPI, Depends
+from qpay import AsyncQPayClient
+from fastapi_qpay import webhook_handler, get_qpay_client
+from fastapi_qpay.webhook import WebhookPayload
+
+app = FastAPI()
+
+@app.post("/custom-webhook")
+async def my_webhook(
+    payload: WebhookPayload,
+    client: AsyncQPayClient = Depends(get_qpay_client),
+):
+    result = await webhook_handler(payload, client)
+
+    if result.status == "paid":
+        # Update order status
+        await update_order(payload.invoice_id, status="paid")
+
+    return result
+```
+
+### Webhook Models
+
+```python
+from fastapi_qpay.webhook import WebhookPayload, WebhookResponse
+
+# Request body
+class WebhookPayload(BaseModel):
+    invoice_id: str
+
+# Response body
+class WebhookResponse(BaseModel):
+    status: str       # "paid", "unpaid", or "error"
+    message: str = "" # Error message or confirmation
+```
+
+---
+
 ## Dependency Injection
+
+### get_qpay_client
+
+An async generator dependency that creates and cleans up an `AsyncQPayClient`:
 
 ```python
 from fastapi import Depends
@@ -41,6 +284,162 @@ from fastapi_qpay import get_qpay_client
 
 @app.post("/pay")
 async def pay(client: AsyncQPayClient = Depends(get_qpay_client)):
+    # client is automatically configured from env vars
+    # client.close() is called automatically after the request
     invoice = await client.create_simple_invoice(...)
     return invoice
 ```
+
+### get_qpay_config
+
+Returns a `QPayConfig` object from the settings:
+
+```python
+from fastapi import Depends
+from qpay import QPayConfig
+from fastapi_qpay import get_qpay_config
+
+@app.get("/config-check")
+def check(config: QPayConfig = Depends(get_qpay_config)):
+    return {"base_url": config.base_url}
+```
+
+### Overriding Dependencies
+
+Override the settings dependency for testing or custom configuration:
+
+```python
+from fastapi_qpay import QPaySettings
+from fastapi_qpay.config import get_settings
+
+def get_custom_settings():
+    return QPaySettings(
+        base_url="https://sandbox.qpay.mn",
+        username="test_user",
+        password="test_pass",
+        invoice_code="TEST_CODE",
+        callback_url="https://test.example.com/webhook",
+    )
+
+app.dependency_overrides[get_settings] = get_custom_settings
+```
+
+---
+
+## Testing
+
+### Setup
+
+Install test dependencies:
+
+```bash
+pip install "fastapi-qpay[test]"
+```
+
+### Testing with httpx
+
+```python
+import pytest
+from httpx import AsyncClient, ASGITransport
+from unittest.mock import AsyncMock, patch
+
+from fastapi import FastAPI
+from fastapi_qpay import qpay_router
+
+app = FastAPI()
+app.include_router(qpay_router, prefix="/qpay")
+
+
+@pytest.mark.asyncio
+async def test_webhook_paid():
+    mock_client = AsyncMock()
+    mock_client.check_payment.return_value = AsyncMock(
+        rows=[{"payment_id": "pay_123"}]
+    )
+
+    with patch("fastapi_qpay.dependencies.get_qpay_client") as mock_dep:
+        mock_dep.return_value = mock_client
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test"
+        ) as ac:
+            response = await ac.post(
+                "/qpay/webhook",
+                json={"invoice_id": "inv_123"},
+            )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "paid"
+```
+
+### Testing with Dependency Overrides
+
+```python
+from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock
+
+app = FastAPI()
+app.include_router(qpay_router, prefix="/qpay")
+
+# Override the client dependency
+mock_client = AsyncMock()
+mock_client.check_payment.return_value = AsyncMock(rows=[])
+
+async def mock_get_client():
+    yield mock_client
+
+app.dependency_overrides[get_qpay_client] = mock_get_client
+
+client = TestClient(app)
+
+def test_webhook_unpaid():
+    response = client.post("/qpay/webhook", json={"invoice_id": "inv_456"})
+    assert response.json()["status"] == "unpaid"
+```
+
+---
+
+## API Reference
+
+### Exports from `fastapi_qpay`
+
+| Export | Type | Description |
+|--------|------|-------------|
+| `QPaySettings` | class | Pydantic settings model |
+| `get_qpay_client` | async dependency | Provides `AsyncQPayClient` |
+| `get_qpay_config` | dependency | Provides `QPayConfig` |
+| `qpay_router` | `APIRouter` | Pre-built router with default prefix |
+| `create_qpay_router(prefix, tags)` | function | Creates a custom router |
+| `webhook_handler` | async function | Standalone webhook handler |
+
+### Pre-built Router Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/webhook` | Webhook callback handler |
+| POST | `/invoice` | Create a simple invoice (query params: `sender_invoice_no`, `amount`) |
+| GET | `/payment/{invoice_id}/status` | Check payment status |
+
+### Webhook Models
+
+| Model | Fields | Description |
+|-------|--------|-------------|
+| `WebhookPayload` | `invoice_id: str` | Webhook request body |
+| `WebhookResponse` | `status: str, message: str` | Webhook response body |
+
+### Dependencies
+
+| Dependency | Provides | Description |
+|------------|----------|-------------|
+| `get_qpay_client` | `AsyncQPayClient` | Auto-configured, auto-closed client |
+| `get_qpay_config` | `QPayConfig` | Configuration from settings |
+| `get_settings` | `QPaySettings` | Cached Pydantic settings |
+
+---
+
+## Links
+
+- **GitHub**: [github.com/qpay-sdk/fastapi-qpay](https://github.com/qpay-sdk/fastapi-qpay)
+- **PyPI**: [pypi.org/project/fastapi-qpay/](https://pypi.org/project/fastapi-qpay/)
+- **Base SDK**: [qpay-py](/sdks/python)

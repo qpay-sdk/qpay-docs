@@ -1,8 +1,12 @@
 # Express
 
-QPay V2 payment middleware for Express. Wraps [qpay-js](https://github.com/qpay-sdk/qpay-js) SDK.
+QPay V2 payment middleware for Express. Built on top of [qpay-js](https://github.com/qpay-sdk/qpay-js), this package provides Express middleware that attaches a QPay client to requests, a pre-built router with invoice and webhook endpoints, and callback-based webhook handling.
 
 - **GitHub**: [qpay-sdk/qpay-express](https://github.com/qpay-sdk/qpay-express)
+- **npm**: [@qpay-sdk/express](https://www.npmjs.com/package/@qpay-sdk/express)
+- **Requirements**: Node.js 18+, Express 4.x or 5.x, qpay-js 1.x
+
+---
 
 ## Installation
 
@@ -10,34 +14,344 @@ QPay V2 payment middleware for Express. Wraps [qpay-js](https://github.com/qpay-
 npm install @qpay-sdk/express qpay-js
 ```
 
-## Middleware
+Both `express` and `qpay-js` are peer dependencies.
+
+---
+
+## Configuration
+
+### Environment Variables
+
+The middleware reads configuration from environment variables by default (via `qpay-js`'s `loadConfigFromEnv()`):
+
+```bash
+QPAY_BASE_URL=https://merchant.qpay.mn
+QPAY_USERNAME=your_username
+QPAY_PASSWORD=your_password
+QPAY_INVOICE_CODE=your_invoice_code
+QPAY_CALLBACK_URL=https://yoursite.com/qpay/webhook
+```
+
+### Explicit Config
+
+You can also pass a config object directly:
+
+```typescript
+import { qpayMiddleware } from '@qpay-sdk/express';
+
+app.use(qpayMiddleware({
+  baseUrl: 'https://merchant.qpay.mn',
+  username: 'your_username',
+  password: 'your_password',
+  invoiceCode: 'YOUR_CODE',
+  callbackUrl: 'https://yoursite.com/qpay/webhook',
+}));
+```
+
+---
+
+## Quick Start
+
+### Option 1: Middleware + Custom Routes
+
+Attach the QPay client to every request, then use `req.qpay` in your route handlers:
 
 ```typescript
 import express from 'express';
 import { qpayMiddleware } from '@qpay-sdk/express';
 
 const app = express();
+app.use(express.json());
 app.use(qpayMiddleware());
 
 app.post('/pay', async (req, res) => {
   const invoice = await req.qpay.createSimpleInvoice({
-    invoiceCode: 'YOUR_CODE',
+    invoiceCode: process.env.QPAY_INVOICE_CODE,
     senderInvoiceNo: 'ORDER-001',
     amount: 10000,
-    callbackUrl: 'https://yoursite.com/qpay/webhook',
+    callbackUrl: process.env.QPAY_CALLBACK_URL,
   });
   res.json(invoice);
 });
+
+app.listen(3000);
 ```
 
-## Pre-built Router
+### Option 2: Pre-built Router
+
+Mount the pre-built router for a complete payment API:
 
 ```typescript
+import express from 'express';
 import { createQPayRouter } from '@qpay-sdk/express';
+
+const app = express();
 
 app.use('/qpay', createQPayRouter(undefined, {
   onPaymentReceived: (invoiceId, result) => {
-    console.log('Payment received:', invoiceId);
+    console.log('Payment confirmed:', invoiceId);
+    // Update order status, send confirmation email, etc.
+  },
+  onPaymentFailed: (invoiceId, reason) => {
+    console.log('Payment failed:', invoiceId, reason);
+  },
+}));
+
+app.listen(3000);
+```
+
+This registers three endpoints:
+- `POST /qpay/invoice` -- Create a simple invoice
+- `POST /qpay/check` -- Check payment status
+- `POST /qpay/webhook` -- Webhook callback handler
+
+---
+
+## Create Invoice
+
+### Using Middleware
+
+```typescript
+app.use(qpayMiddleware());
+
+app.post('/create-invoice', async (req, res) => {
+  try {
+    const invoice = await req.qpay.createSimpleInvoice({
+      invoiceCode: 'YOUR_CODE',
+      senderInvoiceNo: `ORDER-${req.body.orderId}`,
+      amount: req.body.amount,
+      callbackUrl: 'https://yoursite.com/qpay/webhook',
+    });
+
+    // invoice.invoiceId    -- QPay invoice ID
+    // invoice.qrImage      -- Base64 QR code
+    // invoice.qrText       -- QR code text
+    // invoice.qPayShortUrl -- Short payment URL
+    // invoice.urls         -- Bank deep links
+
+    res.json(invoice);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+```
+
+### Full Invoice
+
+```typescript
+const invoice = await req.qpay.createInvoice({
+  invoiceCode: 'YOUR_CODE',
+  senderInvoiceNo: 'ORDER-001',
+  invoiceReceiverCode: 'receiver_001',
+  invoiceDescription: 'Payment for Order #001',
+  amount: 10000,
+  callbackUrl: 'https://yoursite.com/qpay/webhook',
+});
+```
+
+### Check Payment
+
+```typescript
+const result = await req.qpay.checkPayment({
+  objectType: 'INVOICE',
+  objectId: invoiceId,
+});
+
+if (result.rows && result.rows.length > 0) {
+  // Payment confirmed
+}
+```
+
+### Cancel Invoice
+
+```typescript
+await req.qpay.cancelInvoice(invoiceId);
+```
+
+---
+
+## Webhook Handling
+
+### Using the Pre-built Router
+
+The `createQPayRouter` function includes a webhook endpoint at `POST /webhook`:
+
+```typescript
+app.use('/qpay', createQPayRouter(undefined, {
+  onPaymentReceived: async (invoiceId, result) => {
+    // Called when payment is confirmed
+    await Order.findOneAndUpdate(
+      { qpayInvoiceId: invoiceId },
+      { status: 'paid' },
+    );
+  },
+  onPaymentFailed: async (invoiceId, reason) => {
+    // Called when payment verification fails
+    console.error(`Payment failed for ${invoiceId}: ${reason}`);
   },
 }));
 ```
+
+### Standalone Webhook Middleware
+
+Use the `qpayWebhook` function for a standalone webhook endpoint:
+
+```typescript
+import { qpayMiddleware, qpayWebhook } from '@qpay-sdk/express';
+
+app.use(qpayMiddleware());
+
+app.post('/qpay/webhook', qpayWebhook({
+  onPaymentReceived: async (invoiceId, result) => {
+    console.log('Paid:', invoiceId);
+  },
+  onPaymentFailed: async (invoiceId, reason) => {
+    console.log('Failed:', invoiceId, reason);
+  },
+}));
+```
+
+### Webhook Flow
+
+When QPay sends a POST to your webhook:
+
+1. The handler extracts `invoice_id` from the request body
+2. Calls `checkPayment` to verify the payment via the QPay API
+3. If payment rows are found, calls `onPaymentReceived(invoiceId, result)`
+4. If no rows are found, calls `onPaymentFailed(invoiceId, 'No payment found')`
+5. If an error occurs, calls `onPaymentFailed(invoiceId, errorMessage)`
+6. Returns a JSON response (`{ status: 'paid' }` or `{ status: 'unpaid' }`)
+
+---
+
+## Event Callbacks
+
+The Express package uses callback-based event handling via `QPayWebhookOptions`:
+
+```typescript
+interface QPayWebhookOptions {
+  onPaymentReceived?: (invoiceId: string, result: any) => void | Promise<void>;
+  onPaymentFailed?: (invoiceId: string, reason: string) => void | Promise<void>;
+}
+```
+
+Both callbacks support async functions.
+
+---
+
+## Testing
+
+### Mocking the Client
+
+```typescript
+import request from 'supertest';
+import express from 'express';
+import { qpayMiddleware } from '@qpay-sdk/express';
+
+const app = express();
+app.use(express.json());
+app.use(qpayMiddleware({
+  baseUrl: 'https://merchant.qpay.mn',
+  username: 'test',
+  password: 'test',
+}));
+
+// Mock qpay-js client methods for testing
+jest.mock('qpay-js', () => ({
+  QPayClient: jest.fn().mockImplementation(() => ({
+    createSimpleInvoice: jest.fn().mockResolvedValue({
+      invoiceId: 'inv_123',
+      qrImage: 'base64data',
+    }),
+    checkPayment: jest.fn().mockResolvedValue({
+      rows: [{ paymentId: 'pay_123' }],
+    }),
+  })),
+  loadConfigFromEnv: jest.fn().mockReturnValue({
+    baseUrl: 'https://merchant.qpay.mn',
+    username: 'test',
+    password: 'test',
+  }),
+}));
+```
+
+### Testing the Webhook
+
+```typescript
+import request from 'supertest';
+
+describe('Webhook', () => {
+  it('should return paid status', async () => {
+    const onPaymentReceived = jest.fn();
+
+    const app = express();
+    app.use('/qpay', createQPayRouter(undefined, { onPaymentReceived }));
+
+    const res = await request(app)
+      .post('/qpay/webhook')
+      .send({ invoice_id: 'inv_123' });
+
+    expect(res.body.status).toBe('paid');
+    expect(onPaymentReceived).toHaveBeenCalledWith('inv_123', expect.any(Object));
+  });
+});
+```
+
+---
+
+## API Reference
+
+### Exports
+
+| Export | Type | Description |
+|--------|------|-------------|
+| `qpayMiddleware(config?)` | `RequestHandler` | Express middleware that attaches `req.qpay` |
+| `qpayWebhook(options?)` | `RequestHandler` | Standalone webhook handler middleware |
+| `createQPayRouter(config?, options?)` | `Router` | Pre-built Express router with all endpoints |
+
+### QPayRequest
+
+Extended Express `Request` with QPay client:
+
+```typescript
+interface QPayRequest extends Request {
+  qpay: QPayClient;
+}
+```
+
+### QPayWebhookOptions
+
+```typescript
+interface QPayWebhookOptions {
+  onPaymentReceived?: (invoiceId: string, result: any) => void | Promise<void>;
+  onPaymentFailed?: (invoiceId: string, reason: string) => void | Promise<void>;
+}
+```
+
+### Pre-built Router Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/invoice` | Create a simple invoice (body forwarded to `createSimpleInvoice`) |
+| POST | `/check` | Check payment status (body forwarded to `checkPayment`) |
+| POST | `/webhook` | Webhook callback handler |
+
+### Re-exported Types from qpay-js
+
+| Type | Description |
+|------|-------------|
+| `QPayConfig` | Configuration interface |
+| `QPayClient` | QPay HTTP client |
+| `CreateInvoiceRequest` | Full invoice request |
+| `CreateSimpleInvoiceRequest` | Simple invoice request |
+| `InvoiceResponse` | Invoice response |
+| `PaymentCheckRequest` | Payment check request |
+| `PaymentCheckResponse` | Payment check response |
+
+---
+
+## Links
+
+- **GitHub**: [github.com/qpay-sdk/qpay-express](https://github.com/qpay-sdk/qpay-express)
+- **npm**: [npmjs.com/package/@qpay-sdk/express](https://www.npmjs.com/package/@qpay-sdk/express)
+- **Base SDK**: [qpay-js](/sdks/javascript)

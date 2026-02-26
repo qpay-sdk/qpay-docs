@@ -1,8 +1,12 @@
 # Django
 
-QPay V2 payment integration for Django. Wraps [qpay-py](https://github.com/qpay-sdk/qpay-py) SDK.
+QPay V2 payment integration for Django. Built on top of [qpay-py](https://github.com/qpay-sdk/qpay-py), this package provides a Django app with models, views, template tags, signals, and admin integration.
 
 - **GitHub**: [qpay-sdk/django-qpay](https://github.com/qpay-sdk/django-qpay)
+- **PyPI**: [django-qpay](https://pypi.org/project/django-qpay/)
+- **Requirements**: Python 3.9+, Django 4.2+
+
+---
 
 ## Installation
 
@@ -10,9 +14,29 @@ QPay V2 payment integration for Django. Wraps [qpay-py](https://github.com/qpay-
 pip install django-qpay
 ```
 
-Add `"django_qpay"` to `INSTALLED_APPS`, then `python manage.py migrate`.
+Add `"django_qpay"` to your `INSTALLED_APPS`:
+
+```python
+# settings.py
+INSTALLED_APPS = [
+    # ...
+    "django_qpay",
+]
+```
+
+Run migrations to create the `PaymentLog` model:
+
+```bash
+python manage.py migrate
+```
+
+---
 
 ## Configuration
+
+### Django Settings
+
+Add the `QPAY` dictionary to your `settings.py`:
 
 ```python
 # settings.py
@@ -25,15 +49,53 @@ QPAY = {
 }
 ```
 
-## URLs
+### Using Environment Variables
+
+For production, read from environment variables:
 
 ```python
+import os
+
+QPAY = {
+    "BASE_URL": os.environ.get("QPAY_BASE_URL", "https://merchant.qpay.mn"),
+    "USERNAME": os.environ["QPAY_USERNAME"],
+    "PASSWORD": os.environ["QPAY_PASSWORD"],
+    "INVOICE_CODE": os.environ["QPAY_INVOICE_CODE"],
+    "CALLBACK_URL": os.environ["QPAY_CALLBACK_URL"],
+}
+```
+
+### Configuration Options
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `BASE_URL` | `https://merchant.qpay.mn` | QPay API base URL |
+| `USERNAME` | `""` | Merchant username |
+| `PASSWORD` | `""` | Merchant password |
+| `INVOICE_CODE` | `""` | Default invoice code |
+| `CALLBACK_URL` | `""` | Webhook callback URL |
+
+---
+
+## Quick Start
+
+### Include URLs
+
+Add the QPay URL configuration to your project:
+
+```python
+# urls.py
+from django.urls import path, include
+
 urlpatterns = [
+    # ...
     path("qpay/", include("django_qpay.urls")),
 ]
 ```
 
-## Usage
+This registers the webhook endpoint at `POST /qpay/webhook/`.
+
+### Create an Invoice
 
 ```python
 from django_qpay.client import get_client
@@ -46,22 +108,328 @@ invoice = client.create_simple_invoice(CreateSimpleInvoiceRequest(
     amount=10000,
     callback_url="https://yoursite.com/qpay/webhook/",
 ))
+
+# invoice.invoice_id  -- QPay invoice ID
+# invoice.qr_image    -- Base64-encoded QR code
+# invoice.qr_text     -- QR code text
+# invoice.qpay_short_url -- Short payment URL
+# invoice.urls        -- Bank deep links
 ```
 
-## Template Tags
+---
 
-```html
-{% load qpay_tags %}
-{% qpay_qr invoice.qr_image %}
-{% qpay_payment_links invoice.urls %}
+## Create Invoice
+
+### Simple Invoice
+
+```python
+from django_qpay.client import get_client
+from qpay.types import CreateSimpleInvoiceRequest
+
+client = get_client()
+invoice = client.create_simple_invoice(CreateSimpleInvoiceRequest(
+    invoice_code="YOUR_CODE",
+    sender_invoice_no=f"ORDER-{order.id}",
+    amount=order.total,
+    callback_url="https://yoursite.com/qpay/webhook/",
+))
 ```
+
+### Full Invoice
+
+```python
+from qpay.types import CreateInvoiceRequest
+
+invoice = client.create_invoice(CreateInvoiceRequest(
+    invoice_code="YOUR_CODE",
+    sender_invoice_no=f"ORDER-{order.id}",
+    invoice_receiver_code="receiver_001",
+    invoice_description=f"Payment for Order #{order.id}",
+    amount=order.total,
+    callback_url="https://yoursite.com/qpay/webhook/",
+))
+```
+
+### Check Payment
+
+```python
+from qpay.types import PaymentCheckRequest
+
+result = client.check_payment(PaymentCheckRequest(
+    object_type="INVOICE",
+    object_id=invoice_id,
+))
+
+if result.rows:
+    print("Payment confirmed!")
+```
+
+### Cancel Invoice
+
+```python
+client.cancel_invoice(invoice_id)
+```
+
+### Using in Views
+
+```python
+from django.shortcuts import render
+from django_qpay.client import get_client
+from qpay.types import CreateSimpleInvoiceRequest
+
+def create_payment(request):
+    client = get_client()
+    invoice = client.create_simple_invoice(CreateSimpleInvoiceRequest(
+        invoice_code="YOUR_CODE",
+        sender_invoice_no="ORDER-001",
+        amount=10000,
+        callback_url="https://yoursite.com/qpay/webhook/",
+    ))
+    return render(request, "payment.html", {"invoice": invoice})
+```
+
+---
+
+## Webhook Handling
+
+The package includes a built-in webhook view at `POST /qpay/webhook/` (when you include the URLs as shown above). The CSRF exemption is handled automatically.
+
+When QPay sends a callback:
+
+1. The view parses the `invoice_id` from the JSON body
+2. Calls `check_payment` to verify the payment status
+3. Sends the `payment_received` signal if payment rows are found
+4. Sends the `payment_failed` signal if no payment is found or an error occurs
+5. Returns a JSON response
+
+### Webhook URL Pattern
+
+```python
+# django_qpay/urls.py
+app_name = "django_qpay"
+
+urlpatterns = [
+    path("webhook/", WebhookView.as_view(), name="webhook"),
+]
+```
+
+---
 
 ## Signals
 
+The package provides two Django signals:
+
+### payment_received
+
+Fired when a payment is confirmed.
+
 ```python
+from django.dispatch import receiver
 from django_qpay.signals import payment_received
 
 @receiver(payment_received)
 def on_payment(sender, invoice_id, result, **kwargs):
-    ...
+    """
+    sender     -- None
+    invoice_id -- str, QPay invoice ID
+    result     -- PaymentCheckResponse, full check result
+    """
+    order = Order.objects.get(qpay_invoice_id=invoice_id)
+    order.status = "paid"
+    order.save()
 ```
+
+### payment_failed
+
+Fired when no payment is found or an error occurs.
+
+```python
+from django.dispatch import receiver
+from django_qpay.signals import payment_failed
+
+@receiver(payment_failed)
+def on_payment_failed(sender, invoice_id, reason, **kwargs):
+    """
+    sender     -- None
+    invoice_id -- str, QPay invoice ID
+    reason     -- str, failure reason
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.warning(f"Payment failed for {invoice_id}: {reason}")
+```
+
+---
+
+## Template Tags
+
+Load the QPay template tags in your templates:
+
+```html
+{% load qpay_tags %}
+```
+
+### QR Code
+
+Renders a base64-encoded QR code image:
+
+```html
+{% load qpay_tags %}
+
+{% qpay_qr invoice.qr_image %}
+
+{# With custom size #}
+{% qpay_qr invoice.qr_image 200 %}
+```
+
+Output: A centered `<img>` tag with the QR code.
+
+### Payment Links
+
+Renders bank deep link buttons:
+
+```html
+{% load qpay_tags %}
+
+{% qpay_payment_links invoice.urls %}
+```
+
+Output: A flex container with styled bank link buttons including logos and names.
+
+---
+
+## Models
+
+### PaymentLog
+
+The package includes a `PaymentLog` model for tracking payments:
+
+```python
+from django_qpay.models import PaymentLog
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `invoice_id` | `CharField(255)` | QPay invoice ID (indexed) |
+| `payment_id` | `CharField(255)` | QPay payment ID |
+| `amount` | `DecimalField(12, 2)` | Payment amount |
+| `status` | `CharField(32)` | Status: `pending`, `paid`, etc. (indexed) |
+| `raw_response` | `JSONField` | Raw API response data |
+| `created_at` | `DateTimeField` | Created timestamp |
+| `updated_at` | `DateTimeField` | Updated timestamp |
+
+### Admin Integration
+
+The `PaymentLog` model is automatically registered in Django admin with:
+
+- **List display**: invoice_id, payment_id, amount, status, created_at
+- **Filters**: status
+- **Search**: invoice_id, payment_id
+
+---
+
+## Testing
+
+### Mocking the Client
+
+```python
+from unittest.mock import patch, MagicMock
+from django.test import TestCase
+
+class PaymentTest(TestCase):
+    @patch("django_qpay.client.get_client")
+    def test_create_invoice(self, mock_get_client):
+        mock_client = MagicMock()
+        mock_client.create_simple_invoice.return_value = MagicMock(
+            invoice_id="inv_123",
+            qr_image="base64data",
+        )
+        mock_get_client.return_value = mock_client
+
+        # Your test code here
+```
+
+### Testing the Webhook
+
+```python
+from django.test import TestCase, Client
+from unittest.mock import patch, MagicMock
+
+class WebhookTest(TestCase):
+    @patch("django_qpay.views.get_client")
+    def test_webhook_paid(self, mock_get_client):
+        mock_client = MagicMock()
+        mock_result = MagicMock()
+        mock_result.rows = [{"payment_id": "pay_123"}]
+        mock_client.check_payment.return_value = mock_result
+        mock_get_client.return_value = mock_client
+
+        response = self.client.post(
+            "/qpay/webhook/",
+            data={"invoice_id": "inv_123"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "paid")
+```
+
+### Testing Signals
+
+```python
+from django_qpay.signals import payment_received
+
+def test_signal_received(self):
+    handler = MagicMock()
+    payment_received.connect(handler)
+
+    # Trigger webhook...
+
+    handler.assert_called_once()
+    args = handler.call_args
+    self.assertEqual(args.kwargs["invoice_id"], "inv_123")
+```
+
+---
+
+## API Reference
+
+### Functions
+
+| Function | Module | Description |
+|----------|--------|-------------|
+| `get_client()` | `django_qpay.client` | Returns a singleton `QPayClient` instance |
+
+### Signals
+
+| Signal | Module | Parameters |
+|--------|--------|------------|
+| `payment_received` | `django_qpay.signals` | `sender`, `invoice_id`, `result` |
+| `payment_failed` | `django_qpay.signals` | `sender`, `invoice_id`, `reason` |
+
+### Template Tags
+
+| Tag | Parameters | Description |
+|-----|------------|-------------|
+| `{% qpay_qr %}` | `qr_image`, `size=256` | Render QR code image |
+| `{% qpay_payment_links %}` | `urls` | Render bank payment links |
+
+### Models
+
+| Model | Module | Description |
+|-------|--------|-------------|
+| `PaymentLog` | `django_qpay.models` | Payment tracking model |
+
+### Views
+
+| View | URL | Method | Description |
+|------|-----|--------|-------------|
+| `WebhookView` | `/webhook/` | POST | Webhook callback handler |
+
+---
+
+## Links
+
+- **GitHub**: [github.com/qpay-sdk/django-qpay](https://github.com/qpay-sdk/django-qpay)
+- **PyPI**: [pypi.org/project/django-qpay/](https://pypi.org/project/django-qpay/)
+- **Base SDK**: [qpay-py](/sdks/python)
