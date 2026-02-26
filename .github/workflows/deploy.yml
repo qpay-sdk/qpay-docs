@@ -26,6 +26,7 @@ jobs:
       - run: npm run build
         env:
           GITHUB_PAGES: true
+      - run: npx pagefind --site out --output-path out/qpay-docs/_pagefind
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ./out
