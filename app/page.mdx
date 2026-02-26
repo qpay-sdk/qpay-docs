@@ -6,21 +6,26 @@ Integrate QPay payments into your application with official SDKs for 11 language
 
 ---
 
-## Supported Languages
+## Published Packages
+
+| Language | Package | Registry | Install | Version |
+|---|---|---|---|---|
+| **Go** | [`qpay-go`](https://github.com/qpay-sdk/qpay-go) | [pkg.go.dev](https://pkg.go.dev/github.com/qpay-sdk/qpay-go) | `go get github.com/qpay-sdk/qpay-go` | v1.0.0 |
+| **JavaScript / TypeScript** | [`qpay-js`](https://github.com/qpay-sdk/qpay-js) | [npm](https://www.npmjs.com/package/qpay-js) | `npm install qpay-js` | 1.0.0 |
+| **Python** | [`qpay-py`](https://github.com/qpay-sdk/qpay-py) | [PyPI](https://pypi.org/project/qpay-py/) | `pip install qpay-py` | 1.0.0 |
+| **PHP** | [`qpay-php`](https://github.com/qpay-sdk/qpay-php) | [Packagist](https://packagist.org/packages/usukhbayar/qpay-php) | `composer require usukhbayar/qpay-php` | dev-main |
+| **Ruby** | [`qpay-ruby`](https://github.com/qpay-sdk/qpay-ruby) | [RubyGems](https://rubygems.org/gems/qpay-sdk) | `gem install qpay-sdk` | 1.0.0 |
+| **Dart / Flutter** | [`qpay-dart`](https://github.com/qpay-sdk/qpay-dart) | [pub.dev](https://pub.dev/packages/qpay) | `dart pub add qpay` | 1.0.0 |
+| **Rust** | [`qpay-rust`](https://github.com/qpay-sdk/qpay-rust) | [crates.io](https://crates.io/crates/qpay) | `cargo add qpay` | 1.0.0 |
+
+## GitHub Only
 
 | Language | Package | Install |
 |---|---|---|
-| **Go** | `qpay-go` | `go get github.com/qpay-sdk/qpay-go` |
-| **JavaScript / TypeScript** | `qpay-js` | `npm install qpay-js` |
-| **Python** | `qpay-py` | `pip install qpay-py` |
-| **PHP** | `qpay-php` | `composer require usukhbayar/qpay-php` |
-| **Java** | `qpay-java` | Maven / Gradle (see docs) |
-| **Ruby** | `qpay-sdk` | `gem install qpay-sdk` |
-| **.NET (C#)** | `QPay` | `dotnet add package QPay` |
-| **Dart / Flutter** | `qpay` | `dart pub add qpay` |
-| **Swift** | `QPay` | Swift Package Manager |
-| **Rust** | `qpay` | `cargo add qpay` |
-| **cURL** | `qpay-curl` | Shell scripts (no install) |
+| **Java** | [`qpay-java`](https://github.com/qpay-sdk/qpay-java) | Maven / Gradle (GitHub) |
+| **.NET (C#)** | [`qpay-dotnet`](https://github.com/qpay-sdk/qpay-dotnet) | `dotnet add reference` (GitHub) |
+| **Swift** | [`qpay-swift`](https://github.com/qpay-sdk/qpay-swift) | Swift Package Manager (GitHub) |
+| **cURL** | [`qpay-curl`](https://github.com/qpay-sdk/qpay-curl) | `git clone` (shell scripts) |
 
 ---
 
@@ -89,6 +94,17 @@ dart pub add qpay
 
 ```bash
 cargo add qpay
+```
+
+### cURL
+
+```bash
+git clone https://github.com/qpay-sdk/qpay-curl.git
+cd qpay-curl
+cp .env.example .env
+# Edit .env with your credentials
+source helpers/auth.sh
+./examples/invoice/create-simple.sh
 ```
 
 ---
