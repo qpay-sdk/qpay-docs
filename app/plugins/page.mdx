@@ -1,13 +1,69 @@
 # CMS Plugins
 
-QPay V2 төлбөрийн integration-ууд e-commerce болон CMS платформуудад. Plugin-ууд QPay V2 API-тай шууд ажилладаг (SDK шаардлагагүй).
+QPay V2 payment integrations for e-commerce platforms and content management systems. All plugins communicate directly with the QPay V2 API -- no separate SDK dependency is required.
 
-| Platform | Plugin | GitHub |
-|----------|--------|--------|
-| WooCommerce | `qpay-woocommerce` | [qpay-woocommerce](https://github.com/qpay-sdk/qpay-woocommerce) |
-| Shopify | `qpay-shopify` | [qpay-shopify](https://github.com/qpay-sdk/qpay-shopify) |
-| OpenCart | `qpay-opencart` | [qpay-opencart](https://github.com/qpay-sdk/qpay-opencart) |
-| Magento | `qpay-magento` | [qpay-magento](https://github.com/qpay-sdk/qpay-magento) |
-| PrestaShop | `qpay-prestashop` | [qpay-prestashop](https://github.com/qpay-sdk/qpay-prestashop) |
-| WordPress | `qpay-wordpress` | [qpay-wordpress](https://github.com/qpay-sdk/qpay-wordpress) |
-| Odoo | `qpay-odoo` | [qpay-odoo](https://github.com/qpay-sdk/qpay-odoo) |
+## Available Plugins
+
+| Platform | Version | Language | License | GitHub |
+|----------|---------|----------|---------|--------|
+| [WooCommerce](/plugins/woocommerce) | 1.0.0 | PHP | MIT | [qpay-woocommerce](https://github.com/qpay-sdk/qpay-woocommerce) |
+| [Shopify](/plugins/shopify) | 1.0.0 | Node.js | MIT | [qpay-shopify](https://github.com/qpay-sdk/qpay-shopify) |
+| [OpenCart](/plugins/opencart) | 1.0.0 | PHP | MIT | [qpay-opencart](https://github.com/qpay-sdk/qpay-opencart) |
+| [Magento](/plugins/magento) | 1.0.0 | PHP | MIT | [qpay-magento](https://github.com/qpay-sdk/qpay-magento) |
+| [PrestaShop](/plugins/prestashop) | 1.0.0 | PHP | MIT | [qpay-prestashop](https://github.com/qpay-sdk/qpay-prestashop) |
+| [WordPress](/plugins/wordpress) | 1.0.0 | PHP | MIT | [qpay-wordpress](https://github.com/qpay-sdk/qpay-wordpress) |
+| [Odoo](/plugins/odoo) | 1.0.0 | Python | LGPL-3 | [qpay-odoo](https://github.com/qpay-sdk/qpay-odoo) |
+
+## Common Features
+
+Every QPay CMS plugin shares a core set of capabilities:
+
+- **QR Code Display** -- Generates and displays a QPay QR code image for customers to scan
+- **Bank App Deep Links** -- Provides direct links to Mongolian banking apps (Khan Bank, Golomt, TDB, etc.)
+- **Automatic Polling** -- Client-side JavaScript polls the payment status every 3 seconds and redirects on success
+- **Webhook Callbacks** -- Server-side webhook endpoint verifies payment via `POST /v2/payment/check`
+- **Auto Token Management** -- Handles QPay V2 token acquisition and caching internally
+
+## How Payment Works
+
+All plugins follow the same payment flow:
+
+1. **Customer initiates checkout** and selects QPay as the payment method
+2. **Plugin authenticates** with the QPay V2 API using Basic Auth (`POST /v2/auth/token`)
+3. **Invoice is created** via `POST /v2/invoice` with the order amount and callback URL
+4. **QR code and bank links** are displayed to the customer from the invoice response
+5. **Customer pays** by scanning the QR code or tapping a bank app deep link
+6. **Payment is confirmed** through two parallel mechanisms:
+   - QPay sends a webhook callback to the configured callback URL
+   - Client-side JavaScript polls the payment status via AJAX
+7. **Order status is updated** to paid/completed
+
+## Prerequisites
+
+Before installing any plugin, you need:
+
+- A QPay merchant account with API credentials (username and password)
+- An invoice code assigned to your merchant account
+- A publicly accessible server for webhook callbacks (production only)
+
+For testing, use the sandbox environment:
+```
+https://merchant-sandbox.qpay.mn
+```
+
+For production:
+```
+https://merchant.qpay.mn
+```
+
+## Choosing a Plugin
+
+| If you use... | Install... |
+|---------------|------------|
+| WordPress + WooCommerce | [WooCommerce plugin](/plugins/woocommerce) |
+| WordPress (no shop) | [WordPress plugin](/plugins/wordpress) |
+| Shopify | [Shopify app](/plugins/shopify) |
+| OpenCart 4.x | [OpenCart extension](/plugins/opencart) |
+| Magento 2 | [Magento module](/plugins/magento) |
+| PrestaShop 8.x | [PrestaShop module](/plugins/prestashop) |
+| Odoo 17+ | [Odoo module](/plugins/odoo) |

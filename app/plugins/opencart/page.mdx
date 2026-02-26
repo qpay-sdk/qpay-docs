@@ -1,45 +1,207 @@
 # OpenCart
 
-QPay V2 payment extension for OpenCart 4.x.
+QPay V2 payment extension for OpenCart 4.x. Adds QPay as a payment method in the checkout flow with QR code display, bank app deep links, and automatic order status updates.
 
 - **GitHub**: [qpay-sdk/qpay-opencart](https://github.com/qpay-sdk/qpay-opencart)
+- **Version**: 1.0.0
+- **License**: MIT
+
+---
+
+## Requirements
+
+| Requirement | Version |
+|-------------|---------|
+| OpenCart | 4.0+ |
+| PHP | 8.0+ |
+| cURL extension | Required |
+
+---
 
 ## Installation
 
-1. Copy the `upload/` folder contents to your OpenCart root directory
-2. Go to **Extensions → Payments** in admin panel
-3. Find **QPay** and click **Install**, then **Edit** to configure
+### Manual Upload
+
+1. Download or clone the repository:
+   ```bash
+   git clone https://github.com/qpay-sdk/qpay-opencart.git
+   ```
+2. Copy the contents of the `upload/` directory to your OpenCart installation root. This places files in the correct OpenCart directory structure:
+   - `admin/controller/extension/payment/qpay.php`
+   - `admin/language/en-gb/extension/payment/qpay.php`
+   - `admin/view/template/extension/payment/qpay.twig`
+   - `catalog/controller/extension/payment/qpay.php`
+   - `catalog/language/en-gb/extension/payment/qpay.php`
+   - `catalog/view/template/extension/payment/qpay.twig`
+   - `system/library/qpay.php`
+3. In the OpenCart admin panel, go to **Extensions > Extensions** and select **Payments** from the filter dropdown
+4. Find **QPay Payment** in the list, click the green **Install** button
+5. Click the blue **Edit** button to configure the extension
+
+---
 
 ## Configuration
 
-| Setting | Description |
-|---------|-------------|
-| Base URL | `https://merchant.qpay.mn` |
-| Username | QPay merchant username |
-| Password | QPay merchant password |
-| Invoice Code | Your invoice code |
-| Callback URL | Auto-generated webhook URL |
-| Status | Enable/Disable |
+Navigate to **Extensions > Extensions > Payments > QPay Payment** (Edit) in the admin panel.
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Status** | Enable or disable the payment method | Disabled |
+| **API Base URL** | QPay API endpoint | `https://merchant.qpay.mn` |
+| **Username** | QPay merchant username | -- |
+| **Password** | QPay merchant password | -- |
+| **Invoice Code** | QPay merchant invoice code | -- |
+| **Callback URL** | Webhook URL for payment notifications | Auto-generated |
+| **Order Status (Paid)** | The order status to set when payment is confirmed | -- |
+| **Sort Order** | Display order among payment methods | -- |
+
+For sandbox testing, set the API Base URL to:
+```
+https://merchant-sandbox.qpay.mn
+```
+
+---
+
+## How It Works
+
+### Payment Flow
+
+1. **Checkout**: Customer selects QPay and clicks the "QPay-eer toloh" button at checkout
+2. **Confirm Action**: The catalog controller (`extension/payment/qpay.confirm`) creates a QPay invoice using the `system/library/qpay.php` API client
+3. **Payment Page**: Customer is redirected to the payment page (`extension/payment/qpay.pay`) which displays:
+   - A QR code image from the QPay response
+   - Bank app deep links for supported Mongolian banks
+4. **Client-side Polling**: JavaScript polls `extension/payment/qpay.check` every 3 seconds
+5. **Payment Confirmation**: When payment is detected:
+   - The order status is updated to the configured "Order Status (Paid)" value via `addHistory()`
+   - The customer is redirected to the checkout success page
+6. **Webhook Callback**: QPay also sends a POST to the callback URL (`extension/payment/qpay.callback`)
+
+### Invoice Data Mapping
+
+| QPay Field | OpenCart Source |
+|------------|---------------|
+| `invoice_code` | Plugin setting (`payment_qpay_invoice_code`) |
+| `sender_invoice_no` | Order ID |
+| `invoice_receiver_code` | Customer email |
+| `invoice_description` | `Order #<order_id>` |
+| `amount` | Order total |
+| `callback_url` | Plugin setting or auto-generated URL |
+
+---
+
+## Webhook Setup
+
+The callback URL can be configured in the admin panel settings. If left empty, it defaults to the catalog route:
+
+```
+https://yourstore.com/index.php?route=extension/payment/qpay.callback
+```
+
+The callback endpoint receives a JSON POST body containing the `invoice_id` from QPay. It verifies the payment and returns a JSON acknowledgment.
+
+Make sure the callback URL is publicly accessible. For OpenCart installations behind a reverse proxy, ensure the proxy passes POST requests to the callback route.
+
+---
+
+## Customization
+
+### Admin Template
+
+The admin configuration form is a Twig template at `admin/view/template/extension/payment/qpay.twig`. You can add additional settings fields by:
+
+1. Adding the field to the admin controller's `$fields` array in `admin/controller/extension/payment/qpay.php`
+2. Adding the corresponding HTML input in the Twig template
+3. The settings are automatically saved via OpenCart's `model_setting_setting->editSetting()`
+
+### Checkout Template
+
+The checkout button template is at `catalog/view/template/extension/payment/qpay.twig`. It renders a single button that triggers the confirm action via a fetch POST request.
+
+### API Client
+
+The QPay API client (`system/library/qpay.php`) is a standalone PHP class with no OpenCart dependencies. It can be reused in custom controllers or modules:
+
+```php
+require_once DIR_SYSTEM . 'library/qpay.php';
+$qpay = new \QPay('https://merchant.qpay.mn', 'username', 'password');
+
+// Create an invoice
+$invoice = $qpay->createInvoice([
+    'invoice_code' => 'YOUR_CODE',
+    'sender_invoice_no' => '12345',
+    'amount' => 50000,
+    'callback_url' => 'https://yourstore.com/callback',
+]);
+
+// Check payment status
+$result = $qpay->checkPayment($invoice['invoice_id']);
+```
+
+Token management is handled automatically within the `QPay` class instance, cached in memory for the duration of the request.
+
+### Language Files
+
+- Admin: `admin/language/en-gb/extension/payment/qpay.php`
+- Catalog: `catalog/language/en-gb/extension/payment/qpay.php`
+
+Add additional language files for localization by creating corresponding files in other language directories (e.g., `mn-mn`).
+
+---
+
+## Troubleshooting
+
+### QPay not appearing in payment methods
+
+- Verify the extension is installed and enabled (Status = Enabled) in **Extensions > Payments**
+- Check that the sort order is set appropriately
+- Clear OpenCart's cache from **Dashboard > Blue gear icon** (or delete `system/storage/cache/` files)
+
+### "QPay invoice creation failed" error
+
+- Verify your QPay credentials (username, password, invoice code) in the extension settings
+- Check that the API Base URL is correct
+- Ensure your server can make outbound HTTPS requests to `merchant.qpay.mn`
+- Check the OpenCart error log (`system/storage/logs/error.log`)
+
+### Webhook not updating order status
+
+- Ensure the callback URL is publicly accessible
+- Verify the Order Status (Paid) dropdown is set to a valid status
+- Test the callback URL manually with a POST request containing `{"invoice_id": "test"}`
+- Check for mod_security or firewall rules blocking JSON POST requests
+
+### Payment page is blank
+
+- Verify the QR code data is stored in the session (`$this->session->data['qpay_invoice']`)
+- Check the catalog controller for errors during invoice creation
+- Review PHP error logs for exceptions
+
+---
 
 ## File Structure
 
 ```
-upload/
-├── admin/
-│   ├── controller/extension/payment/qpay.php
-│   ├── language/en-gb/extension/payment/qpay.php
-│   └── view/template/extension/payment/qpay.twig
-├── catalog/
-│   ├── controller/extension/payment/qpay.php
-│   ├── language/en-gb/extension/payment/qpay.php
-│   └── view/template/extension/payment/qpay.twig
-└── system/
-    └── library/qpay.php          # QPay V2 API client
+qpay-opencart/
+├── upload/
+│   ├── admin/
+│   │   ├── controller/extension/payment/qpay.php    # Admin settings controller
+│   │   ├── language/en-gb/extension/payment/qpay.php # Admin language strings
+│   │   └── view/template/extension/payment/qpay.twig # Admin settings form
+│   ├── catalog/
+│   │   ├── controller/extension/payment/qpay.php    # Checkout, payment, polling, callback
+│   │   ├── language/en-gb/extension/payment/qpay.php # Frontend language strings
+│   │   └── view/template/extension/payment/qpay.twig # Checkout button template
+│   └── system/
+│       └── library/qpay.php                          # QPay V2 API client (standalone)
+├── .github/workflows/ci.yml
+└── README.md
 ```
 
-## How It Works
+---
 
-1. Customer selects QPay at checkout
-2. Catalog controller creates invoice via `system/library/qpay.php`
-3. Payment page shows QR code and bank deep links
-4. QPay sends webhook → order status updated
+## Links
+
+- **GitHub**: [https://github.com/qpay-sdk/qpay-opencart](https://github.com/qpay-sdk/qpay-opencart)
+- **QPay API Reference**: [/api-reference](/api-reference)
+- **OpenCart Documentation**: [https://docs.opencart.com/](https://docs.opencart.com/)

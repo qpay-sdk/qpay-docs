@@ -1,55 +1,260 @@
 # Shopify
 
-QPay V2 payment app for Shopify. Node.js/Express app that integrates with Shopify's payment flow.
+QPay V2 payment app for Shopify stores. A standalone Node.js/Express application that provides QPay payment processing, QR code checkout, bank app deep links, and webhook-based payment confirmation.
 
 - **GitHub**: [qpay-sdk/qpay-shopify](https://github.com/qpay-sdk/qpay-shopify)
+- **Version**: 1.0.0
+- **License**: MIT
+
+---
+
+## Requirements
+
+| Requirement | Version |
+|-------------|---------|
+| Node.js | 18.0+ |
+| npm | 9.0+ |
+| Shopify store | Any plan |
+| Public server | For webhook callbacks |
+
+---
 
 ## Installation
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/qpay-sdk/qpay-shopify.git
+cd qpay-shopify
+```
+
+### 2. Install Dependencies
 
 ```bash
 npm install
 ```
 
+The app depends on:
+- `express` (^4.18.0) -- HTTP server and routing
+- `ejs` (^3.1.9) -- Template engine for the payment page
+- `dotenv` (^16.3.0) -- Environment variable management
+
+### 3. Configure Environment
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your credentials (see [Configuration](#configuration) below).
+
+### 4. Start the App
+
+```bash
+# Production
+npm start
+
+# Development (auto-reload)
+npm run dev
+```
+
+The app runs on the configured `PORT` (default: 3000).
+
+---
+
 ## Configuration
+
+All configuration is managed through environment variables in the `.env` file:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SHOPIFY_API_KEY` | Your Shopify app API key | -- |
+| `SHOPIFY_API_SECRET` | Your Shopify app API secret | -- |
+| `QPAY_BASE_URL` | QPay API endpoint | `https://merchant.qpay.mn` |
+| `QPAY_USERNAME` | QPay merchant username | -- |
+| `QPAY_PASSWORD` | QPay merchant password | -- |
+| `QPAY_INVOICE_CODE` | QPay merchant invoice code | -- |
+| `QPAY_CALLBACK_URL` | Public URL for QPay webhook callbacks | -- |
+| `PORT` | HTTP server port | `3000` |
+
+Example `.env` file:
 
 ```bash
 SHOPIFY_API_KEY=your_shopify_api_key
-SHOPIFY_API_SECRET=your_shopify_secret
+SHOPIFY_API_SECRET=your_shopify_api_secret
 QPAY_BASE_URL=https://merchant.qpay.mn
 QPAY_USERNAME=your_username
 QPAY_PASSWORD=your_password
 QPAY_INVOICE_CODE=your_invoice_code
-QPAY_CALLBACK_URL=https://yourapp.com/webhooks/qpay
+QPAY_CALLBACK_URL=https://your-app-domain.com/webhook/qpay
 PORT=3000
 ```
 
+For sandbox testing, set `QPAY_BASE_URL` to:
+```
+https://merchant-sandbox.qpay.mn
+```
+
+---
+
 ## How It Works
 
-1. Shopify redirects customer to the app's payment page
-2. App creates QPay invoice via V2 API
-3. QR code and bank deep links shown to customer
-4. Customer pays → QPay webhook confirms payment
-5. App notifies Shopify that payment is complete
+### Payment Flow
 
-## Project Structure
+1. **Initiation**: Shopify redirects the customer to your app's `POST /payment/initiate` endpoint with the order ID, amount, and customer email
+2. **Invoice Creation**: The app authenticates with QPay V2 API and creates an invoice
+3. **Payment Page**: The EJS template renders a payment page with:
+   - A QR code image (base64-encoded PNG)
+   - Bank app deep links for supported Mongolian banks
+   - A "Waiting for payment..." status indicator
+4. **Client-side Polling**: JavaScript polls `GET /payment/check/:invoiceId` every 3 seconds
+5. **Payment Confirmation**: When payment is detected:
+   - The status message changes to "Payment confirmed!"
+   - After 1.5 seconds, the customer is redirected back to Shopify's return URL
+6. **Webhook**: QPay also sends a server-side callback to `POST /webhook/qpay` for reliable confirmation
+
+### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/payment/initiate` | Creates a QPay invoice and renders the payment page |
+| `GET` | `/payment/check/:invoiceId` | Checks payment status for an invoice (returns `{ paid: true/false }`) |
+| `POST` | `/webhook/qpay` | Receives QPay webhook callbacks |
+| `POST` | `/gdpr/customers/data_request` | Shopify GDPR data request handler |
+| `POST` | `/gdpr/customers/redact` | Shopify GDPR customer data redaction |
+| `POST` | `/gdpr/shop/redact` | Shopify GDPR shop data redaction |
+| `GET` | `/` | Health check endpoint |
+
+### Invoice Data Mapping
+
+| QPay Field | Source |
+|------------|--------|
+| `invoice_code` | `QPAY_INVOICE_CODE` env var |
+| `sender_invoice_no` | Shopify order ID |
+| `invoice_receiver_code` | Customer email |
+| `invoice_description` | `Shopify Order #<orderId>` |
+| `amount` | Order amount |
+| `callback_url` | `QPAY_CALLBACK_URL` env var |
+
+---
+
+## Webhook Setup
+
+### QPay Webhook
+
+Configure your QPay callback URL to point to:
+
+```
+https://your-app-domain.com/webhook/qpay
+```
+
+The webhook handler receives a JSON POST body with `invoice_id`, verifies the payment via `POST /v2/payment/check`, and returns the payment status.
+
+### Shopify GDPR Webhooks
+
+The app includes the three mandatory Shopify GDPR endpoints. Since the app does not store customer data persistently, these handlers return acknowledgment responses:
+
+- `POST /gdpr/customers/data_request` -- Returns "No customer data stored"
+- `POST /gdpr/customers/redact` -- Returns "No customer data to redact"
+- `POST /gdpr/shop/redact` -- Returns "Shop data redacted"
+
+---
+
+## Customization
+
+### Payment Page Template
+
+The payment page is an EJS template located at `src/views/payment.ejs`. You can customize the design by modifying the inline CSS or adding external stylesheets. The template receives these variables:
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `invoice` | object | Full QPay invoice response (contains `qr_image`, `urls`, `invoice_id`) |
+| `orderId` | string | The Shopify order ID |
+| `checkUrl` | string | URL for polling payment status |
+| `returnUrl` | string | URL to redirect to after payment |
+
+### QPay Client
+
+The QPay API client (`src/qpay-client.js`) exposes two methods:
+
+```javascript
+const qpay = require('./qpay-client');
+
+// Create a QPay invoice
+const invoice = await qpay.createInvoice({
+  invoice_code: '...',
+  sender_invoice_no: '...',
+  amount: 50000,
+  callback_url: '...',
+});
+
+// Check payment status
+const result = await qpay.checkPayment(invoiceId);
+```
+
+Token management is handled automatically. The access token is cached in memory and refreshed 30 seconds before expiry.
+
+### Adding Custom Routes
+
+Add new Express routes in the `src/routes/` directory and register them in `src/index.js`:
+
+```javascript
+const customRoutes = require('./routes/custom');
+app.use('/custom', customRoutes);
+```
+
+---
+
+## Troubleshooting
+
+### "Cannot POST /payment/initiate" or 404 errors
+
+- Verify the app is running and accessible at the configured port
+- Check that the request body includes `orderId`, `amount`, and optionally `email`
+- Ensure the Express app has JSON body parsing middleware enabled (it is by default)
+
+### QR code not displaying
+
+- Check that the QPay credentials in `.env` are correct
+- Verify the `QPAY_BASE_URL` is reachable from your server
+- Check the server console for error messages during invoice creation
+
+### Webhook not receiving callbacks
+
+- Ensure `QPAY_CALLBACK_URL` is a publicly accessible HTTPS URL
+- For local development, use a tunneling service (ngrok, localtunnel)
+- Verify the webhook endpoint responds to POST requests
+
+### Payment polling stuck on "Waiting..."
+
+- Open the browser developer console and check for JavaScript errors
+- Verify the `/payment/check/:invoiceId` endpoint returns a valid JSON response
+- Check that the QPay API is accessible from your server
+
+---
+
+## File Structure
 
 ```
 qpay-shopify/
 ├── src/
-│   ├── index.js              # Express app entry
-│   ├── config.js             # Environment config
-│   ├── qpay-client.js        # QPay V2 API client
+│   ├── index.js              # Express app entry point, mounts routes
+│   ├── config.js             # Environment configuration (Shopify + QPay)
+│   ├── qpay-client.js        # QPay V2 API client (auth, invoice, check)
 │   ├── routes/
-│   │   ├── payment.js        # Payment flow routes
-│   │   ├── webhook.js        # QPay webhook handler
-│   │   └── gdpr.js           # Shopify GDPR endpoints
+│   │   ├── payment.js        # POST /payment/initiate, GET /payment/check/:id
+│   │   ├── webhook.js        # POST /webhook/qpay
+│   │   └── gdpr.js           # Shopify GDPR mandatory endpoints
 │   └── views/
-│       └── payment.ejs       # Payment page template
-└── package.json
+│       └── payment.ejs       # Payment page template (QR code + bank links)
+├── package.json              # Dependencies and scripts
+├── .env.example              # Environment variable template
+└── README.md
 ```
 
-## Running
+---
 
-```bash
-npm start
-```
+## Links
+
+- **GitHub**: [https://github.com/qpay-sdk/qpay-shopify](https://github.com/qpay-sdk/qpay-shopify)
+- **QPay API Reference**: [/api-reference](/api-reference)
+- **Shopify App Development**: [https://shopify.dev/docs/apps](https://shopify.dev/docs/apps)

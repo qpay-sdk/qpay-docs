@@ -1,57 +1,299 @@
 # Odoo
 
-QPay V2 payment provider module for Odoo 17+. Extends `payment.provider` and `payment.transaction`.
+QPay V2 payment provider module for Odoo 17+. Extends `payment.provider` and `payment.transaction` models to integrate QPay into Odoo's payment flow with QR code display, bank app deep links, webhook handling, and automatic transaction confirmation.
 
 - **GitHub**: [qpay-sdk/qpay-odoo](https://github.com/qpay-sdk/qpay-odoo)
+- **Version**: 1.0.0
+- **License**: LGPL-3
+
+---
+
+## Requirements
+
+| Requirement | Version |
+|-------------|---------|
+| Odoo | 17.0+ |
+| Python | 3.10+ |
+| `requests` library | Required (included in Odoo) |
+
+The module depends on the `payment` Odoo core module.
+
+---
 
 ## Installation
 
-1. Copy `payment_qpay/` to your Odoo addons directory
-2. Update the module list: **Settings -> Apps -> Update Apps List**
-3. Install **QPay Payment Provider** from the Apps menu
+### Standard Installation
+
+1. Download or clone the repository:
+   ```bash
+   git clone https://github.com/qpay-sdk/qpay-odoo.git
+   ```
+2. Copy the `payment_qpay/` directory to your Odoo addons path (e.g., `/opt/odoo/addons/` or your custom addons directory)
+3. Restart the Odoo server
+4. Go to **Settings > Apps > Update Apps List** and click **Update**
+5. Search for **QPay Payment Provider** in the Apps list and click **Install**
+
+### Docker Installation
+
+If using Docker, mount the `payment_qpay/` directory into the addons volume:
+
+```yaml
+volumes:
+  - ./payment_qpay:/mnt/extra-addons/payment_qpay
+```
+
+Then update the apps list and install from the Odoo web interface.
+
+---
 
 ## Configuration
 
-Go to **Invoicing/Accounting -> Configuration -> Payment Providers -> QPay**:
+Navigate to **Invoicing > Configuration > Payment Providers** (or **Accounting > Configuration > Payment Providers**) and select **QPay**.
 
-| Setting | Description |
-|---------|-------------|
-| Base URL | `https://merchant.qpay.mn` |
-| Username | QPay merchant username |
-| Password | QPay merchant password |
-| Invoice Code | Your QPay invoice code |
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **QPay Base URL** | QPay API endpoint | `https://merchant.qpay.mn` |
+| **QPay Username** | QPay merchant username | -- |
+| **QPay Password** | QPay merchant password | -- |
+| **QPay Invoice Code** | QPay merchant invoice code | -- |
+| **State** | Provider state (disabled, enabled, test) | Disabled |
+
+The username and password fields are restricted to the `base.group_system` security group, so only system administrators can view and modify them.
+
+After configuring the credentials, set the provider state to **Enabled** and publish it to make QPay available at checkout.
+
+For sandbox testing, set the QPay Base URL to:
+```
+https://merchant-sandbox.qpay.mn
+```
+
+---
 
 ## How It Works
 
-1. Customer selects QPay at checkout
-2. Module creates invoice via QPay V2 API
-3. QR code and bank deep links displayed on payment page
-4. Customer pays via bank app
-5. QPay sends webhook callback to `/payment/qpay/webhook`
-6. Transaction is automatically confirmed
+### Payment Flow
 
-## Files
+1. **Checkout**: Customer selects QPay as the payment provider on the checkout page or payment form
+2. **Transaction Creation**: Odoo creates a `payment.transaction` record and calls `_get_specific_rendering_values()` on the QPay transaction model
+3. **Invoice Creation**: The transaction model calls `POST /v2/invoice` via `_qpay_make_request()` on the provider model, passing the order reference, amount, customer email, and callback URL
+4. **QR Display**: The payment template (`payment_qpay_templates.xml`) renders:
+   - A QR code image (base64-encoded PNG)
+   - A "Pay with QPay" short URL button
+   - Bank app deep links for supported Mongolian banks
+   - A "Waiting for payment..." spinner
+5. **Client-side Polling**: JavaScript polls `/payment/qpay/check` every 3 seconds for up to 5 minutes. On success, the page reloads automatically
+6. **Webhook Confirmation**: QPay sends a POST to `/payment/qpay/webhook`. The controller finds the matching transaction and calls `_handle_notification_data()`, which triggers `_process_notification_data()` to verify the payment and set the transaction to `done`
+
+### Currency Filtering
+
+The module automatically filters itself from available providers when the order currency is not MNT (Mongolian Tugrik). This is handled by the `_get_compatible_providers()` override:
+
+```python
+if currency and currency.name != 'MNT':
+    providers = providers.filtered(lambda p: p.code != 'qpay')
+```
+
+### Invoice Data Mapping
+
+| QPay Field | Odoo Source |
+|------------|------------|
+| `invoice_code` | Provider field: `qpay_invoice_code` |
+| `sender_invoice_no` | Transaction reference |
+| `amount` | Transaction amount |
+| `callback_url` | Auto-generated: `{base_url}/payment/qpay/webhook` |
+| `invoice_description` | Transaction reference |
+| `invoice_receiver_code` | Partner (customer) email |
+
+### Token Management
+
+The provider model uses a class-level dictionary cache (`_qpay_token_cache`) keyed by provider ID. If a request returns a 401 status, the cache is cleared and a new token is acquired automatically.
+
+---
+
+## Webhook Setup
+
+The module automatically registers two HTTP endpoints via the `QPayController`:
+
+### Payment Webhook
+
+```
+POST /payment/qpay/webhook
+```
+
+- Type: JSON (`type='json'`)
+- Auth: Public (`auth='public'`)
+- CSRF: Disabled (`csrf=False`)
+
+This endpoint:
+1. Receives the QPay callback data (JSON)
+2. Finds the matching `payment.transaction` by `sender_invoice_no`
+3. Calls `_handle_notification_data()` which triggers `_process_notification_data()`
+4. The notification handler verifies the payment via `POST /v2/payment/check`
+5. If payment rows exist, sets the transaction to `done`; otherwise sets it to `pending`
+
+### Payment Status Check
+
+```
+POST /payment/qpay/check
+```
+
+- Type: JSON
+- Auth: Public
+- CSRF: Disabled
+
+This endpoint is used by the client-side JavaScript polling. It accepts `invoice_id` in the JSON body, looks up the transaction, verifies payment with QPay, and returns `{ paid: true/false }`.
+
+The callback URL is automatically generated using `self.get_base_url()` and does not need manual configuration.
+
+---
+
+## Customization
+
+### Extending the Provider
+
+Add custom fields to the QPay provider by inheriting the model:
+
+```python
+from odoo import fields, models
+
+class PaymentProvider(models.Model):
+    _inherit = 'payment.provider'
+
+    qpay_custom_field = fields.Char(
+        string='Custom Field',
+        required_if_provider='qpay',
+    )
+```
+
+Add the field to the admin view by inheriting `payment_provider_form_qpay`:
+
+```xml
+<record id="custom_qpay_view" model="ir.ui.view">
+    <field name="model">payment.provider</field>
+    <field name="inherit_id" ref="payment_qpay.payment_provider_form_qpay"/>
+    <field name="arch" type="xml">
+        <field name="qpay_invoice_code" position="after">
+            <field name="qpay_custom_field"/>
+        </field>
+    </field>
+</record>
+```
+
+### Extending the Transaction
+
+Override `_process_notification_data()` to add custom logic after payment verification:
+
+```python
+class PaymentTransaction(models.Model):
+    _inherit = 'payment.transaction'
+
+    def _process_notification_data(self, notification_data):
+        super()._process_notification_data(notification_data)
+        if self.provider_code != 'qpay':
+            return
+        # Custom logic after QPay payment processing
+```
+
+### Payment Template
+
+The payment form template (`payment_qpay_templates.xml`) uses Odoo's QWeb templating. Customize the template by inheriting it:
+
+```xml
+<template id="custom_payment_form" inherit_id="payment_qpay.payment_form_qpay">
+    <xpath expr="//div[@id='qpay-payment-container']" position="inside">
+        <p>Custom content here</p>
+    </xpath>
+</template>
+```
+
+### API Client Usage
+
+The QPay API methods on the provider model can be called from any Odoo code:
+
+```python
+provider = self.env['payment.provider'].search([('code', '=', 'qpay')], limit=1)
+
+# Create an invoice
+invoice = provider._qpay_make_request('/v2/invoice', {
+    'invoice_code': provider.qpay_invoice_code,
+    'sender_invoice_no': 'CUSTOM-001',
+    'amount': 50000,
+    'callback_url': 'https://yoursite.com/payment/qpay/webhook',
+})
+
+# Check payment status
+result = provider._qpay_make_request('/v2/payment/check', {
+    'object_type': 'INVOICE',
+    'object_id': invoice['invoice_id'],
+})
+```
+
+---
+
+## Troubleshooting
+
+### QPay not appearing at checkout
+
+- Verify the module is installed: check **Settings > Apps** for "QPay Payment Provider"
+- Ensure the provider state is set to **Enabled** (not Disabled)
+- Make sure the provider is published (check "Published" checkbox)
+- Confirm the order currency is MNT -- QPay is automatically hidden for other currencies
+
+### "QPay invoice creation failed" error
+
+- Check your QPay credentials in the provider configuration
+- Verify the Base URL is correct
+- Ensure the Odoo server can make outbound HTTPS requests to `merchant.qpay.mn`
+- Check Odoo server logs for the full error traceback
+
+### Webhook not confirming payments
+
+- The webhook URL is auto-generated: `{odoo_base_url}/payment/qpay/webhook`
+- Verify the Odoo base URL is correctly configured in **Settings > Technical > System Parameters** (`web.base.url`)
+- Check that the webhook endpoint is publicly accessible
+- Review Odoo server logs for "QPay webhook received" messages
+
+### Token authentication errors
+
+- If you see 401 errors, the module automatically clears the token cache and retries
+- Persistent auth failures indicate incorrect credentials
+- Check that the credentials have not expired or been rotated on the QPay side
+
+### Polling stops after 5 minutes
+
+This is by design. The client-side polling has a 5-minute timeout (`setTimeout(function() { clearInterval(interval); }, 300000)`). If the customer has not paid within 5 minutes, they need to refresh the page to restart polling.
+
+---
+
+## File Structure
 
 ```
 payment_qpay/
-├── __manifest__.py                  # Module manifest
-├── __init__.py
+├── __manifest__.py                        # Module manifest (v1.0.0, depends: payment)
+├── __init__.py                            # Module init
 ├── models/
-│   ├── payment_provider.py          # QPay provider (auth, API calls)
-│   └── payment_transaction.py       # Transaction handling
+│   ├── __init__.py
+│   ├── payment_provider.py                # QPay provider (fields, auth, API requests)
+│   └── payment_transaction.py             # Transaction handling (invoice creation, verification)
 ├── controllers/
-│   └── main.py                      # Webhook controller
+│   ├── __init__.py
+│   └── main.py                            # HTTP controllers (webhook, payment check)
 ├── views/
-│   ├── payment_provider_views.xml   # Admin config form
-│   └── payment_qpay_templates.xml   # Payment form (QR code)
-└── data/
-    └── payment_provider_data.xml    # Default provider record
+│   ├── payment_provider_views.xml         # Admin config form (inherits payment.provider.form)
+│   └── payment_qpay_templates.xml         # Payment form template (QR, bank links, polling)
+├── data/
+│   └── payment_provider_data.xml          # Default QPay provider record
+├── .github/
+│   └── workflows/
+│       └── ci.yml                         # CI configuration
+├── LICENSE
+└── README.md
 ```
 
-## QPay V2 API
+---
 
-The module communicates directly with QPay V2 API (no SDK dependency):
+## Links
 
-- **Auth**: `POST /v2/auth/token` with Basic Auth
-- **Create Invoice**: `POST /v2/invoice` with Bearer token
-- **Check Payment**: `POST /v2/payment/check`
+- **GitHub**: [https://github.com/qpay-sdk/qpay-odoo](https://github.com/qpay-sdk/qpay-odoo)
+- **QPay API Reference**: [/api-reference](/api-reference)
+- **Odoo Payment Provider Documentation**: [https://www.odoo.com/documentation/17.0/developer/howtos/payment_provider.html](https://www.odoo.com/documentation/17.0/developer/howtos/payment_provider.html)

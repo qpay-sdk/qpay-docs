@@ -1,53 +1,231 @@
 # PrestaShop
 
-QPay V2 payment module for PrestaShop 8.x.
+QPay V2 payment module for PrestaShop 8.x. Extends `PaymentModule` and hooks into PrestaShop's checkout flow to provide QPay payment with QR codes, bank app deep links, and webhook-based order confirmation.
 
 - **GitHub**: [qpay-sdk/qpay-prestashop](https://github.com/qpay-sdk/qpay-prestashop)
+- **Version**: 1.0.0
+- **License**: MIT
+
+---
+
+## Requirements
+
+| Requirement | Version |
+|-------------|---------|
+| PrestaShop | 8.0+ |
+| PHP | 8.0+ |
+| cURL extension | Required |
+
+---
 
 ## Installation
 
-1. Zip the `qpay/` folder
-2. Go to **Modules → Module Manager** in admin
-3. Click **Upload a module** and upload the zip
-4. Configure the module settings
+### Via Back Office Upload
+
+1. Download the repository and create a ZIP archive of the `qpay/` folder (the folder containing `qpay.php` and `classes/`)
+2. In the PrestaShop admin panel, go to **Modules > Module Manager**
+3. Click **Upload a module** and select the ZIP file
+4. The module will be installed automatically
+5. Click **Configure** to enter your QPay credentials
+
+### Manual Installation
+
+1. Download or clone the repository:
+   ```bash
+   git clone https://github.com/qpay-sdk/qpay-prestashop.git
+   ```
+2. Copy the entire folder to `/modules/qpay/` in your PrestaShop installation
+3. Go to **Modules > Module Manager**, find **QPay Payment**, and click **Install**
+4. Click **Configure** to set up your credentials
+
+---
 
 ## Configuration
 
-| Setting | Description |
-|---------|-------------|
-| Base URL | `https://merchant.qpay.mn` |
-| Username | QPay merchant username |
-| Password | QPay merchant password |
-| Invoice Code | Your invoice code |
-| Callback URL | Webhook URL |
+After installing the module, click **Configure** or go to **Modules > Module Manager > QPay Payment > Configure**.
 
-## Module Structure
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **API Base URL** | QPay API endpoint | `https://merchant.qpay.mn` |
+| **Username** | QPay merchant username | -- |
+| **Password** | QPay merchant password | -- |
+| **Invoice Code** | QPay merchant invoice code | -- |
+| **Callback URL** | Webhook URL for payment notifications | -- |
 
+Configuration values are stored using PrestaShop's `Configuration` class:
+
+| Configuration Key | Description |
+|-------------------|-------------|
+| `QPAY_BASE_URL` | API base URL |
+| `QPAY_USERNAME` | Merchant username |
+| `QPAY_PASSWORD` | Merchant password |
+| `QPAY_INVOICE_CODE` | Invoice code |
+| `QPAY_CALLBACK_URL` | Webhook callback URL |
+
+For sandbox testing, set the API Base URL to:
 ```
-qpay/
-├── qpay.php                    # Main module class
-├── classes/
-│   └── QPayApi.php             # QPay V2 API client
-├── controllers/front/
-│   ├── payment.php             # Payment page controller
-│   ├── validation.php          # Payment validation
-│   └── check.php               # AJAX payment status check
-├── views/templates/front/
-│   └── payment.tpl             # Smarty payment template
-└── translations/
+https://merchant-sandbox.qpay.mn
 ```
 
-## Hooks
-
-The module registers these PrestaShop hooks:
-
-- `paymentOptions` — Adds QPay as payment option at checkout
-- `paymentReturn` — Displays payment confirmation
+---
 
 ## How It Works
 
-1. Customer selects QPay at checkout (`paymentOptions` hook)
-2. Redirected to payment controller → QPay invoice created
-3. QR code and bank links displayed via Smarty template
-4. AJAX polling checks payment status
-5. QPay webhook validates payment → order status updated
+### Payment Flow
+
+1. **Checkout**: The module registers a payment option via the `paymentOptions` hook. QPay appears as "QPay-eer toloh" on the checkout payment step
+2. **Payment Page**: When the customer selects QPay, they are redirected to the module's payment controller. The controller creates a QPay invoice using the `QPayApi` class
+3. **QR Display**: The payment template displays the QR code and bank app deep links
+4. **Client-side Polling**: JavaScript polls the payment status every 3 seconds
+5. **Confirmation**: When payment is confirmed:
+   - The order status is updated
+   - The `paymentReturn` hook displays a confirmation message
+6. **Webhook**: QPay also sends a server-side callback to the configured callback URL
+
+### Registered Hooks
+
+The module registers these PrestaShop hooks during installation:
+
+| Hook | Purpose |
+|------|---------|
+| `paymentOptions` | Adds QPay as a payment option at checkout |
+| `paymentReturn` | Displays payment confirmation after successful payment |
+
+### Invoice Data Mapping
+
+| QPay Field | PrestaShop Source |
+|------------|------------------|
+| `invoice_code` | `Configuration::get('QPAY_INVOICE_CODE')` |
+| `sender_invoice_no` | Cart/Order ID |
+| `amount` | Cart total |
+| `callback_url` | `Configuration::get('QPAY_CALLBACK_URL')` |
+
+---
+
+## Webhook Setup
+
+Set the callback URL in the module configuration. The recommended format is:
+
+```
+https://yourstore.com/module/qpay/callback
+```
+
+The webhook receives a JSON POST body with `invoice_id`, verifies the payment via `POST /v2/payment/check`, and updates the order status.
+
+Ensure the callback URL is publicly accessible and not blocked by PrestaShop's security features or `.htaccess` rules.
+
+---
+
+## Customization
+
+### Hooks
+
+You can interact with the module's hooks from other modules:
+
+```php
+// Listen for QPay payment completion
+public function hookPaymentReturn($params)
+{
+    $order = $params['order'];
+    // Custom logic after QPay payment
+}
+```
+
+### API Client
+
+The `QPayApi` class (`classes/QPayApi.php`) reads credentials from PrestaShop's `Configuration` system. It can be instantiated independently:
+
+```php
+require_once _PS_MODULE_DIR_ . 'qpay/classes/QPayApi.php';
+$api = new QPayApi();
+
+$invoice = $api->createInvoice([
+    'invoice_code' => Configuration::get('QPAY_INVOICE_CODE'),
+    'sender_invoice_no' => 'CUSTOM-001',
+    'amount' => 25000,
+    'callback_url' => 'https://yourstore.com/callback',
+]);
+
+$result = $api->checkPayment($invoiceId);
+```
+
+Token management is automatic -- the access token is cached in memory and refreshed 30 seconds before expiry.
+
+### Configuration Form
+
+The admin configuration form is built using PrestaShop's `HelperForm` class in the `renderForm()` method of `qpay.php`. To add new settings:
+
+1. Add the field to the `$fields` array in `renderForm()`
+2. Add the `Configuration::updateValue()` call in `getContent()` for saving
+3. Add `Configuration::deleteByName()` in `uninstall()` for cleanup
+4. Add the default value to `$helper->fields_value`
+
+### Uninstallation Cleanup
+
+The module cleans up all configuration values on uninstall:
+
+```php
+public function uninstall()
+{
+    Configuration::deleteByName('QPAY_BASE_URL');
+    Configuration::deleteByName('QPAY_USERNAME');
+    Configuration::deleteByName('QPAY_PASSWORD');
+    Configuration::deleteByName('QPAY_INVOICE_CODE');
+    Configuration::deleteByName('QPAY_CALLBACK_URL');
+    return parent::uninstall();
+}
+```
+
+---
+
+## Troubleshooting
+
+### QPay not appearing at checkout
+
+- Verify the module is installed and active in **Modules > Module Manager**
+- Check that the `paymentOptions` hook is registered: go to **Design > Positions** and search for `paymentOptions`
+- Clear PrestaShop caches from **Advanced Parameters > Performance**
+- Re-register hooks by uninstalling and reinstalling the module
+
+### "Invoice creation failed" error
+
+- Verify your QPay credentials in the module configuration
+- Check that the API Base URL is correct
+- Ensure your server can make outbound HTTPS requests (cURL must be enabled)
+- Check PrestaShop error logs in `var/logs/`
+
+### Configuration not saving
+
+- Verify you have admin permissions to modify module settings
+- Check for JavaScript errors on the configuration page
+- Ensure the `submitQPayModule` form action is properly submitted
+
+### Webhook not receiving callbacks
+
+- Confirm the callback URL is publicly accessible
+- Test the URL with a manual POST request
+- Check for `.htaccess` rules or web server configuration blocking the endpoint
+- Verify no security modules (e.g., mod_security) are rejecting JSON POST requests
+
+---
+
+## File Structure
+
+```
+qpay/
+├── qpay.php                          # Main module class (PaymentModule extension)
+├── classes/
+│   └── QPayApi.php                   # QPay V2 API client (auth, invoice, check)
+├── .github/
+│   └── workflows/
+│       └── ci.yml                    # CI configuration
+└── README.md
+```
+
+---
+
+## Links
+
+- **GitHub**: [https://github.com/qpay-sdk/qpay-prestashop](https://github.com/qpay-sdk/qpay-prestashop)
+- **QPay API Reference**: [/api-reference](/api-reference)
+- **PrestaShop Module Development**: [https://devdocs.prestashop-project.org/8/modules/](https://devdocs.prestashop-project.org/8/modules/)

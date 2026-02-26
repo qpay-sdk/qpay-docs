@@ -1,55 +1,260 @@
 # Magento
 
-QPay V2 payment module for Magento 2.
+QPay V2 payment module for Magento 2. Implements the Magento payment gateway interface with dependency injection, admin configuration via `system.xml`, and CSRF-safe webhook handling.
 
 - **GitHub**: [qpay-sdk/qpay-magento](https://github.com/qpay-sdk/qpay-magento)
+- **Version**: 1.0.0
+- **License**: MIT
+
+---
+
+## Requirements
+
+| Requirement | Version |
+|-------------|---------|
+| Magento | 2.4+ |
+| PHP | 8.1+ |
+| Composer | 2.0+ |
+| cURL extension | Required |
+
+The module depends on `Magento_Sales` and `Magento_Payment` core modules.
+
+---
 
 ## Installation
 
+### Via Composer (Recommended)
+
 ```bash
-composer require qpay-sdk/magento
+composer require qpay-sdk/magento2-payment
 php bin/magento module:enable QPay_Payment
 php bin/magento setup:upgrade
 php bin/magento cache:clean
 ```
 
+### Manual Installation
+
+1. Download or clone the repository:
+   ```bash
+   git clone https://github.com/qpay-sdk/qpay-magento.git
+   ```
+2. Copy the module files to `app/code/QPay/Payment/` in your Magento installation
+3. Enable the module and run setup:
+   ```bash
+   php bin/magento module:enable QPay_Payment
+   php bin/magento setup:upgrade
+   php bin/magento cache:clean
+   ```
+
+---
+
 ## Configuration
 
-Go to **Stores → Configuration → Sales → Payment Methods → QPay Payment**.
+Navigate to **Stores > Configuration > Sales > Payment Methods > QPay Payment** in the Magento admin panel.
 
-| Setting | Description |
-|---------|-------------|
-| Enabled | Yes/No |
-| Title | Display name at checkout |
-| Base URL | `https://merchant.qpay.mn` |
-| Username | QPay merchant username |
-| Password | QPay merchant password |
-| Invoice Code | Your invoice code |
-| Callback URL | Webhook URL |
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Enabled** | Enable or disable QPay payment method | No |
+| **Title** | Payment method name displayed at checkout | `QPay` |
+| **API Base URL** | QPay API endpoint | `https://merchant.qpay.mn` |
+| **Username** | QPay merchant username | -- |
+| **Password** | QPay merchant password (stored encrypted) | -- |
+| **Invoice Code** | QPay merchant invoice code | -- |
+| **Callback URL** | Webhook URL for payment notifications | -- |
+| **New Order Status** | Order status after payment confirmation | Processing |
+| **Sort Order** | Display order among payment methods | 10 |
 
-## Module Structure
+The password field uses Magento's `Encrypted` backend model, so it is stored securely in the database.
 
+For sandbox testing, set the API Base URL to:
 ```
-QPay/Payment/
-├── registration.php
-├── composer.json
-├── etc/
-│   ├── module.xml
-│   ├── config.xml              # Default config values
-│   └── adminhtml/system.xml    # Admin config fields
-├── Model/
-│   ├── QPayClient.php          # QPay V2 API client
-│   └── QPayPaymentMethod.php   # Payment method model
-├── Controller/
-│   ├── Payment/Create.php      # Create invoice action
-│   └── Payment/Webhook.php     # Webhook handler
-└── view/
-    └── frontend/templates/     # Payment templates
+https://merchant-sandbox.qpay.mn
 ```
+
+---
 
 ## How It Works
 
-1. Customer selects QPay at checkout
-2. Controller creates QPay invoice via V2 API
-3. QR code page displayed to customer
-4. QPay webhook notifies payment → order updated to "Processing"
+### Payment Flow
+
+1. **Checkout**: Customer selects QPay as the payment method on the Magento checkout page
+2. **Order Placement**: Magento creates the order and routes to the payment start controller (`qpay/payment/start`)
+3. **Invoice Creation**: The `QPayClient` model authenticates with QPay V2 API and creates an invoice
+4. **Payment Page**: A payment page displays the QR code and bank app deep links
+5. **Payment**: Customer pays via a banking app
+6. **Callback**: QPay sends a POST webhook to `qpay/payment/callback`
+7. **Verification**: The callback controller verifies the payment via `POST /v2/payment/check`
+8. **Order Update**: On successful verification, the order status is updated
+
+### Module Architecture
+
+The module follows Magento 2 conventions:
+
+- **`QPayPaymentMethod`** (`Model/QPayPaymentMethod.php`) -- Extends `AbstractMethod`, defines the payment method code (`qpay`) and capabilities (`canCapture = true`)
+- **`QPayClient`** (`Model/QPayClient.php`) -- QPay V2 API client using Magento's `Curl` HTTP client. Reads credentials from `ScopeConfigInterface`. Handles token acquisition and caching
+- **`Start`** (`Controller/Payment/Start.php`) -- GET controller that renders the payment page
+- **`Callback`** (`Controller/Payment/Callback.php`) -- POST controller that handles QPay webhooks. Implements `CsrfAwareActionInterface` to bypass CSRF validation for external callbacks
+
+### Invoice Data Mapping
+
+| QPay Field | Magento Source |
+|------------|---------------|
+| `invoice_code` | Config: `payment/qpay/invoice_code` |
+| `amount` | Order grand total |
+| `callback_url` | Config: `payment/qpay/callback_url` |
+
+---
+
+## Webhook Setup
+
+Set the callback URL in the module configuration to point to:
+
+```
+https://yourstore.com/qpay/payment/callback
+```
+
+This URL is defined by the frontend route in `etc/frontend/routes.xml`:
+
+```xml
+<route id="qpay" frontName="qpay">
+    <module name="QPay_Payment"/>
+</route>
+```
+
+The `Callback` controller implements `CsrfAwareActionInterface` to allow POST requests from QPay without Magento's CSRF token validation:
+
+```php
+public function validateForCsrf(RequestInterface $request): ?bool
+{
+    return true; // Allow external webhook POST requests
+}
+```
+
+The callback handler:
+1. Reads `invoice_id` from the JSON request body
+2. Calls `QPayClient::checkPayment()` to verify with QPay
+3. Returns a JSON response with `status: paid` or `status: unpaid`
+
+---
+
+## Customization
+
+### Extending the Payment Method
+
+Create a plugin (interceptor) for `QPayPaymentMethod` to add custom behavior:
+
+```php
+// etc/di.xml
+<type name="QPay\Payment\Model\QPayPaymentMethod">
+    <plugin name="custom_qpay_plugin" type="Vendor\Module\Plugin\QPayPlugin"/>
+</type>
+```
+
+### Admin Configuration Fields
+
+Add new configuration fields by editing `etc/adminhtml/system.xml`:
+
+```xml
+<field id="custom_field" translate="label" type="text" sortOrder="10" showInDefault="1">
+    <label>Custom Field</label>
+</field>
+```
+
+Set default values in `etc/config.xml`:
+
+```xml
+<qpay>
+    <custom_field>default_value</custom_field>
+</qpay>
+```
+
+### Custom API Client Usage
+
+The `QPayClient` can be injected into any Magento class via constructor dependency injection:
+
+```php
+use QPay\Payment\Model\QPayClient;
+
+class CustomController
+{
+    private QPayClient $qpayClient;
+
+    public function __construct(QPayClient $qpayClient)
+    {
+        $this->qpayClient = $qpayClient;
+    }
+
+    public function execute()
+    {
+        $invoice = $this->qpayClient->createInvoice([...]);
+        $check = $this->qpayClient->checkPayment($invoiceId);
+    }
+}
+```
+
+---
+
+## Troubleshooting
+
+### QPay not showing at checkout
+
+- Verify the module is enabled: `php bin/magento module:status QPay_Payment`
+- Check that "Enabled" is set to "Yes" in the payment configuration
+- Clear caches: `php bin/magento cache:clean`
+- Run `php bin/magento setup:upgrade` if the module was recently installed
+
+### "Invalid login or password" error
+
+- Double-check your QPay credentials in the admin configuration
+- Ensure the password is saved correctly (re-enter and save)
+- Test the credentials with a cURL command to verify they work
+
+### Webhook returns 403
+
+- The callback controller implements `CsrfAwareActionInterface` -- ensure the code is deployed correctly
+- Check Magento's `var/log/system.log` and `var/log/exception.log` for details
+- Verify the route is registered by checking `php bin/magento route:list` (custom command) or testing the URL
+
+### Module not found after installation
+
+- Run `php bin/magento setup:upgrade`
+- Run `php bin/magento setup:di:compile`
+- Clear generated files: `rm -rf generated/code/*`
+- Verify the module directory structure matches `app/code/QPay/Payment/`
+
+---
+
+## File Structure
+
+```
+QPay/Payment/
+├── etc/
+│   ├── module.xml                    # Module declaration (QPay_Payment, v1.0.0)
+│   ├── config.xml                    # Default configuration values
+│   ├── adminhtml/
+│   │   └── system.xml                # Admin configuration fields
+│   └── frontend/
+│       └── routes.xml                # Frontend route (qpay/payment/*)
+├── Model/
+│   ├── QPayClient.php                # QPay V2 API client (DI-compatible)
+│   └── QPayPaymentMethod.php         # Payment method (extends AbstractMethod)
+├── Controller/
+│   └── Payment/
+│       ├── Start.php                 # GET: renders payment page
+│       └── Callback.php              # POST: handles QPay webhook (CSRF-exempt)
+├── Test/
+│   └── Unit/
+│       ├── bootstrap.php
+│       ├── Model/QPayClientTest.php
+│       └── Model/QPayPaymentMethodTest.php
+├── phpunit.xml
+└── README.md
+```
+
+---
+
+## Links
+
+- **GitHub**: [https://github.com/qpay-sdk/qpay-magento](https://github.com/qpay-sdk/qpay-magento)
+- **QPay API Reference**: [/api-reference](/api-reference)
+- **Magento Payment Gateway**: [https://developer.adobe.com/commerce/php/development/payments-integrations/](https://developer.adobe.com/commerce/php/development/payments-integrations/)

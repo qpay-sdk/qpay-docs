@@ -1,46 +1,206 @@
 # WooCommerce
 
-QPay V2 payment gateway for WooCommerce. Extends `WC_Payment_Gateway`.
+QPay V2 payment gateway plugin for WooCommerce. Extends `WC_Payment_Gateway` to add QPay as a checkout payment method with QR code display, bank app deep links, and automatic payment confirmation.
 
 - **GitHub**: [qpay-sdk/qpay-woocommerce](https://github.com/qpay-sdk/qpay-woocommerce)
+- **Version**: 1.0.0
+- **License**: MIT
+
+---
+
+## Requirements
+
+| Requirement | Version |
+|-------------|---------|
+| WordPress | 6.0+ |
+| WooCommerce | 8.0+ |
+| PHP | 8.0+ |
+| cURL extension | Required |
+
+---
 
 ## Installation
 
-1. Download the plugin and upload to `wp-content/plugins/qpay-woocommerce/`
-2. Activate in **Plugins** menu
-3. Go to **WooCommerce → Settings → Payments → QPay** to configure
+### Manual Upload
+
+1. Download or clone the repository:
+   ```bash
+   git clone https://github.com/qpay-sdk/qpay-woocommerce.git
+   ```
+2. Upload the `qpay-woocommerce` folder to `/wp-content/plugins/` on your WordPress site
+3. Go to **Plugins** in your WordPress admin panel and activate **QPay Payment Gateway for WooCommerce**
+4. Navigate to **WooCommerce > Settings > Payments** and you will see **QPay** listed as a payment method
+
+### From WordPress Admin
+
+1. Download the plugin as a ZIP file from GitHub
+2. Go to **Plugins > Add New > Upload Plugin**
+3. Select the ZIP file and click **Install Now**
+4. Activate the plugin
+
+---
 
 ## Configuration
 
-| Setting | Description |
-|---------|-------------|
-| Base URL | `https://merchant.qpay.mn` |
-| Username | QPay merchant username |
-| Password | QPay merchant password |
-| Invoice Code | Your invoice code |
-| Callback URL | Webhook URL (auto-generated) |
+Navigate to **WooCommerce > Settings > Payments > QPay** to configure the gateway.
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Enable/Disable** | Enable QPay payment method at checkout | Disabled |
+| **Title** | Payment method name displayed to customers | `QPay` |
+| **Description** | Description shown during checkout | `QPay-ээр төлбөр төлөх` |
+| **API Base URL** | QPay API endpoint | `https://merchant.qpay.mn` |
+| **Username** | Your QPay merchant username | -- |
+| **Password** | Your QPay merchant password | -- |
+| **Invoice Code** | Your QPay merchant invoice code | -- |
+| **Callback URL** | Webhook URL for payment notifications | Auto-generated: `https://yoursite.com/?wc-api=qpay_webhook` |
+
+For sandbox testing, set the API Base URL to:
+```
+https://merchant-sandbox.qpay.mn
+```
+
+---
 
 ## How It Works
 
-1. Customer selects QPay at checkout
-2. Plugin creates invoice via QPay V2 API
-3. QR code and bank deep links displayed on payment page
-4. Customer pays via bank app
-5. QPay sends webhook callback → order marked as paid
-6. AJAX polling also checks payment status client-side
+### Payment Flow
 
-## Files
+1. **Checkout**: Customer selects QPay at the WooCommerce checkout page
+2. **Invoice Creation**: The plugin authenticates with QPay V2 API and creates an invoice with the order amount, order ID, and billing email
+3. **Payment Page**: Customer is redirected to a payment page displaying:
+   - A QR code image (base64-encoded PNG from the QPay response)
+   - Bank app deep links for all supported Mongolian banks
+4. **Payment**: Customer scans the QR code or taps a bank app link to pay
+5. **Confirmation**: Payment is confirmed via two parallel mechanisms:
+   - **Client-side polling**: JavaScript polls every 3 seconds via AJAX (`wp_ajax_qpay_check_payment`). On success, the customer is automatically redirected to the order confirmation page
+   - **Server-side webhook**: QPay sends a POST request to the callback URL. The webhook handler verifies the payment and calls `$order->payment_complete()`
+
+### Invoice Data Mapping
+
+When creating a QPay invoice, the plugin maps WooCommerce order data as follows:
+
+| QPay Field | WooCommerce Source |
+|------------|-------------------|
+| `invoice_code` | Plugin setting |
+| `sender_invoice_no` | Order ID |
+| `invoice_receiver_code` | Billing email |
+| `invoice_description` | `WooCommerce Order #<order_id>` |
+| `amount` | Order total |
+| `callback_url` | Plugin setting |
+
+---
+
+## Webhook Setup
+
+The webhook URL is automatically configured during plugin setup. It follows the WooCommerce API pattern:
+
+```
+https://yoursite.com/?wc-api=qpay_webhook
+```
+
+The webhook handler (`WC_QPay_Webhook` class) does the following:
+
+1. Reads the `invoice_id` from the POST body (JSON)
+2. Looks up the WooCommerce order by the stored `_qpay_invoice_id` meta value
+3. Calls `POST /v2/payment/check` to verify the payment with QPay
+4. If payment is confirmed, calls `$order->payment_complete()` and adds an order note
+5. Returns a JSON response with the payment status
+
+Make sure your callback URL is publicly accessible. For local development, use a tunneling service like ngrok.
+
+---
+
+## Customization
+
+### Hooks and Filters
+
+The plugin integrates with standard WooCommerce hooks:
+
+```php
+// Add QPay to the list of available payment gateways
+add_filter('woocommerce_payment_gateways', function ($gateways) {
+    $gateways[] = 'WC_QPay_Gateway';
+    return $gateways;
+});
+
+// Customize the payment page display
+add_action('woocommerce_receipt_qpay', function ($order_id) {
+    // Custom payment page rendering
+});
+
+// Modify gateway settings before saving
+add_action('woocommerce_update_options_payment_gateways_qpay', ...);
+```
+
+### Order Meta Data
+
+The plugin stores QPay data in order meta for reference:
+
+| Meta Key | Description |
+|----------|-------------|
+| `_qpay_invoice_id` | QPay invoice ID |
+| `_qpay_qr_image` | Base64-encoded QR code image |
+| `_qpay_qr_text` | QR code text data |
+| `_qpay_urls` | JSON-encoded array of bank deep links |
+
+### Token Caching
+
+The API client caches the access token using WordPress transients (`qpay_access_token`). The token is cached for its TTL minus 60 seconds to prevent expiry issues. The refresh token is also stored as a transient (`qpay_refresh_token`).
+
+---
+
+## Troubleshooting
+
+### Payment page shows no QR code
+
+- Verify your QPay credentials (username, password, invoice code) in the gateway settings
+- Check that the API Base URL is correct (`https://merchant.qpay.mn` for production)
+- Look for errors in the WooCommerce logs (**WooCommerce > Status > Logs**)
+
+### Webhook not updating order status
+
+- Confirm the callback URL is publicly accessible (not behind a firewall or basic auth)
+- Check that the URL `https://yoursite.com/?wc-api=qpay_webhook` returns a response
+- Verify there are no security plugins blocking POST requests to the webhook endpoint
+- Review your server error logs for PHP exceptions
+
+### "QPay payment error. Please try again."
+
+This error appears when the invoice creation fails. Common causes:
+- Invalid or expired credentials
+- Incorrect invoice code
+- Network connectivity issues between your server and QPay API
+- QPay API downtime
+
+### AJAX polling not working
+
+- Ensure JavaScript is not blocked by browser extensions
+- Check the browser console for errors
+- Verify that `admin-ajax.php` is accessible (some security plugins block it)
+
+---
+
+## File Structure
 
 ```
 qpay-woocommerce/
-├── qpay-woocommerce.php         # Main plugin file
+├── qpay-woocommerce.php           # Main plugin file, registers gateway and AJAX handlers
 ├── includes/
-│   ├── class-qpay-api.php       # QPay V2 API client
-│   ├── class-qpay-gateway.php   # WC_Payment_Gateway extension
-│   └── class-qpay-webhook.php   # Webhook handler
-├── templates/
-│   └── payment.php              # QR code + bank links page
-└── assets/
-    ├── css/qpay.css
-    └── js/qpay.js               # AJAX payment polling
+│   ├── class-qpay-api.php         # QPay V2 API client (auth, create invoice, check payment)
+│   ├── class-qpay-gateway.php     # WC_Payment_Gateway extension with admin settings
+│   └── class-qpay-webhook.php     # Webhook handler for payment callbacks
+├── tests/
+│   ├── bootstrap.php              # PHPUnit bootstrap
+│   ├── test-qpay-api.php          # API client tests
+│   └── test-qpay-gateway.php      # Gateway tests
+└── phpunit.xml                    # Test configuration
 ```
+
+---
+
+## Links
+
+- **GitHub**: [https://github.com/qpay-sdk/qpay-woocommerce](https://github.com/qpay-sdk/qpay-woocommerce)
+- **QPay API Reference**: [/api-reference](/api-reference)
+- **WooCommerce Payment Gateway API**: [https://developer.woocommerce.com/docs/payment-gateway-api/](https://developer.woocommerce.com/docs/payment-gateway-api/)
