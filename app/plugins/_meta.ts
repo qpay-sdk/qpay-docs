@@ -6,4 +6,5 @@ export default {
   magento: 'Magento',
   prestashop: 'PrestaShop',
   wordpress: 'WordPress',
+  odoo: 'Odoo',
 }

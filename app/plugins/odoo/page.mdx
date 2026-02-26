@@ -1,0 +1,57 @@
+# Odoo
+
+QPay V2 payment provider module for Odoo 17+. Extends `payment.provider` and `payment.transaction`.
+
+- **GitHub**: [qpay-sdk/qpay-odoo](https://github.com/qpay-sdk/qpay-odoo)
+
+## Installation
+
+1. Copy `payment_qpay/` to your Odoo addons directory
+2. Update the module list: **Settings -> Apps -> Update Apps List**
+3. Install **QPay Payment Provider** from the Apps menu
+
+## Configuration
+
+Go to **Invoicing/Accounting -> Configuration -> Payment Providers -> QPay**:
+
+| Setting | Description |
+|---------|-------------|
+| Base URL | `https://merchant.qpay.mn` |
+| Username | QPay merchant username |
+| Password | QPay merchant password |
+| Invoice Code | Your QPay invoice code |
+
+## How It Works
+
+1. Customer selects QPay at checkout
+2. Module creates invoice via QPay V2 API
+3. QR code and bank deep links displayed on payment page
+4. Customer pays via bank app
+5. QPay sends webhook callback to `/payment/qpay/webhook`
+6. Transaction is automatically confirmed
+
+## Files
+
+```
+payment_qpay/
+├── __manifest__.py                  # Module manifest
+├── __init__.py
+├── models/
+│   ├── payment_provider.py          # QPay provider (auth, API calls)
+│   └── payment_transaction.py       # Transaction handling
+├── controllers/
+│   └── main.py                      # Webhook controller
+├── views/
+│   ├── payment_provider_views.xml   # Admin config form
+│   └── payment_qpay_templates.xml   # Payment form (QR code)
+└── data/
+    └── payment_provider_data.xml    # Default provider record
+```
+
+## QPay V2 API
+
+The module communicates directly with QPay V2 API (no SDK dependency):
+
+- **Auth**: `POST /v2/auth/token` with Basic Auth
+- **Create Invoice**: `POST /v2/invoice` with Bearer token
+- **Check Payment**: `POST /v2/payment/check`
