@@ -3,7 +3,7 @@
 QPay V2 payment starter for Spring Boot 3.2+. Built on top of [qpay-java](https://github.com/qpay-sdk/qpay-java), this package provides auto-configuration, a `QPayTemplate` helper, webhook controller with Spring events, and Thymeleaf fragments.
 
 - **GitHub**: [qpay-sdk/qpay-spring-boot-starter](https://github.com/qpay-sdk/qpay-spring-boot-starter)
-- **Maven Central**: [mn.qpay:qpay-spring-boot-starter](https://central.sonatype.com/artifact/mn.qpay/qpay-spring-boot-starter)
+- **Maven Central**: [io.github.qpay-sdk:qpay-spring-boot-starter](https://central.sonatype.com/artifact/io.github.qpay-sdk/qpay-spring-boot-starter)
 - **Requirements**: Java 17+, Spring Boot 3.2+
 
 ---
@@ -14,7 +14,7 @@ QPay V2 payment starter for Spring Boot 3.2+. Built on top of [qpay-java](https:
 
 ```xml
 <dependency>
-    <groupId>mn.qpay</groupId>
+    <groupId>io.github.qpay-sdk</groupId>
     <artifactId>qpay-spring-boot-starter</artifactId>
     <version>1.0.0</version>
 </dependency>
@@ -23,7 +23,7 @@ QPay V2 payment starter for Spring Boot 3.2+. Built on top of [qpay-java](https:
 ### Gradle
 
 ```groovy
-implementation 'mn.qpay:qpay-spring-boot-starter:1.0.0'
+implementation 'io.github.qpay-sdk:qpay-spring-boot-starter:1.0.0'
 ```
 
 The starter automatically configures a `QPayClient` bean and `QPayTemplate` bean when the application starts.
@@ -347,5 +347,5 @@ class WebhookTest {
 ## Links
 
 - **GitHub**: [github.com/qpay-sdk/qpay-spring-boot-starter](https://github.com/qpay-sdk/qpay-spring-boot-starter)
-- **Maven Central**: [mn.qpay:qpay-spring-boot-starter](https://central.sonatype.com/artifact/mn.qpay/qpay-spring-boot-starter)
+- **Maven Central**: [io.github.qpay-sdk:qpay-spring-boot-starter](https://central.sonatype.com/artifact/io.github.qpay-sdk/qpay-spring-boot-starter)
 - **Base SDK**: [qpay-java](/sdks/java)

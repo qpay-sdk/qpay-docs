@@ -11,7 +11,7 @@ const LANGUAGES = [
   { name: 'Dart', cmd: 'dart pub add qpay', color: '#0175C2' },
   { name: 'Rust', cmd: 'cargo add qpay', color: '#DEA584' },
   { name: '.NET', cmd: 'dotnet add package QPay', color: '#512BD4' },
-  { name: 'Java', cmd: 'mvn: mn.qpay:qpay-java', color: '#ED8B00' },
+  { name: 'Java', cmd: 'io.github.qpay-sdk:qpay-java', color: '#ED8B00' },
   { name: 'Swift', cmd: '.package(url: "qpay-swift")', color: '#F05138' },
 ]
 
