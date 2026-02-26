@@ -3,6 +3,7 @@
 Java SDK for the QPay V2 API. Provides a type-safe client with automatic token management, builder-pattern request construction, and comprehensive error handling.
 
 - **GitHub**: [github.com/qpay-sdk/qpay-java](https://github.com/qpay-sdk/qpay-java)
+- **Maven Central**: [io.github.qpay-sdk:qpay-java](https://central.sonatype.com/artifact/io.github.qpay-sdk/qpay-java)
 - **Requirements**: Java 17+, Maven or Gradle
 
 ## Installation
@@ -11,7 +12,7 @@ Java SDK for the QPay V2 API. Provides a type-safe client with automatic token m
 
 ```xml
 <dependency>
-    <groupId>mn.qpay</groupId>
+    <groupId>io.github.qpay-sdk</groupId>
     <artifactId>qpay-java</artifactId>
     <version>1.0.0</version>
 </dependency>
@@ -20,20 +21,20 @@ Java SDK for the QPay V2 API. Provides a type-safe client with automatic token m
 ### Gradle
 
 ```groovy
-implementation 'mn.qpay:qpay-java:1.0.0'
+implementation 'io.github.qpay-sdk:qpay-java:1.0.0'
 ```
 
 ### Gradle (Kotlin DSL)
 
 ```kotlin
-implementation("mn.qpay:qpay-java:1.0.0")
+implementation("io.github.qpay-sdk:qpay-java:1.0.0")
 ```
 
 ## Quick Start
 
 ```java
-import mn.qpay.sdk.*;
-import mn.qpay.sdk.models.*;
+import io.github.qpay-sdk.sdk.*;
+import io.github.qpay-sdk.sdk.models.*;
 
 // Configure the client
 QPayConfig config = QPayConfig.builder()
@@ -108,7 +109,7 @@ InvoiceResponse invoice = client.createSimpleInvoice(request);
 ### Check Payment
 
 ```java
-import mn.qpay.sdk.models.common.Offset;
+import io.github.qpay-sdk.sdk.models.common.Offset;
 
 PaymentCheckRequest request = PaymentCheckRequest.builder()
         .objectType("INVOICE")
