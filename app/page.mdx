@@ -1,126 +1,105 @@
 # QPay SDK
 
-## QPay V2 Payment API SDK for every language
+## Integrate QPay payments into any application -- in any language, any framework
 
-Integrate QPay payments into your application with official SDKs for 11 languages. Each SDK provides automatic token management, typed request/response models, and comprehensive error handling.
+QPay SDK is a collection of official client libraries for the [QPay V2 Payment API](https://merchant.qpay.mn). Whether you are building a web app, mobile app, or backend service, there is an SDK ready for your stack. Every SDK handles authentication, token lifecycle, and error handling automatically so you can focus on your product.
 
 ---
 
-## Published Packages
+## Why QPay SDK?
 
-| Language | Package | Registry | Install | Version |
-|---|---|---|---|---|
-| **Go** | [`qpay-go`](https://github.com/qpay-sdk/qpay-go) | [pkg.go.dev](https://pkg.go.dev/github.com/qpay-sdk/qpay-go) | `go get github.com/qpay-sdk/qpay-go` | v1.0.0 |
-| **JavaScript / TypeScript** | [`qpay-js`](https://github.com/qpay-sdk/qpay-js) | [npm](https://www.npmjs.com/package/qpay-js) | `npm install qpay-js` | 1.0.0 |
-| **Python** | [`qpay-py`](https://github.com/qpay-sdk/qpay-py) | [PyPI](https://pypi.org/project/qpay-py/) | `pip install qpay-py` | 1.0.0 |
-| **PHP** | [`qpay-php`](https://github.com/qpay-sdk/qpay-php) | [Packagist](https://packagist.org/packages/usukhbayar/qpay-php) | `composer require usukhbayar/qpay-php` | dev-main |
-| **Ruby** | [`qpay-ruby`](https://github.com/qpay-sdk/qpay-ruby) | [RubyGems](https://rubygems.org/gems/qpay-sdk) | `gem install qpay-sdk` | 1.0.0 |
-| **Dart / Flutter** | [`qpay-dart`](https://github.com/qpay-sdk/qpay-dart) | [pub.dev](https://pub.dev/packages/qpay) | `dart pub add qpay` | 1.0.0 |
-| **Rust** | [`qpay-rust`](https://github.com/qpay-sdk/qpay-rust) | [crates.io](https://crates.io/crates/qpay) | `cargo add qpay` | 1.0.0 |
+- **Automatic Token Management** -- Authenticate once. Tokens are obtained, cached, and refreshed behind the scenes. You never write auth code.
+- **Type-safe Models** -- Strongly typed request and response objects in every language. Catch errors at compile time, not in production.
+- **Comprehensive Error Handling** -- Structured error types with QPay error codes, HTTP status codes, and raw response bodies. Every SDK exposes named error constants.
+- **Full API Coverage** -- Invoices, payments, refunds, cancellations, and ebarimt (electronic tax receipts). Every V2 endpoint is supported.
+- **Consistent API Surface** -- The same method names and patterns across all 11 SDKs. Learn one, know them all.
+- **Environment Variable Config** -- Set five env vars and go. Or configure manually in code. Your choice.
 
-## GitHub Only
+---
 
-| Language | Package | Install |
+## Published SDKs
+
+All core SDKs are released at **v1.0.0** and available on their respective package registries.
+
+| Language | Package | Registry | Install Command |
+|---|---|---|---|
+| **Go** | [`qpay-go`](https://github.com/qpay-sdk/qpay-go) | [pkg.go.dev](https://pkg.go.dev/github.com/qpay-sdk/qpay-go) | `go get github.com/qpay-sdk/qpay-go` |
+| **JavaScript / TypeScript** | [`qpay-js`](https://github.com/qpay-sdk/qpay-js) | [npm](https://www.npmjs.com/package/qpay-js) | `npm install qpay-js` |
+| **Python** | [`qpay-py`](https://github.com/qpay-sdk/qpay-py) | [PyPI](https://pypi.org/project/qpay-py/) | `pip install qpay-py` |
+| **PHP** | [`qpay-php`](https://github.com/qpay-sdk/qpay-php) | [Packagist](https://packagist.org/packages/usukhbayar/qpay-php) | `composer require usukhbayar/qpay-php` |
+| **Ruby** | [`qpay-ruby`](https://github.com/qpay-sdk/qpay-ruby) | [RubyGems](https://rubygems.org/gems/qpay-sdk) | `gem install qpay-sdk` |
+| **Dart / Flutter** | [`qpay-dart`](https://github.com/qpay-sdk/qpay-dart) | [pub.dev](https://pub.dev/packages/qpay) | `dart pub add qpay` |
+| **Rust** | [`qpay-rust`](https://github.com/qpay-sdk/qpay-rust) | [crates.io](https://crates.io/crates/qpay) | `cargo add qpay` |
+| **Java** | [`qpay-java`](https://github.com/qpay-sdk/qpay-java) | [Maven Central](https://central.sonatype.com/artifact/mn.qpay/qpay-java) | See [Java SDK docs](/sdks/java) |
+| **.NET (C#)** | [`qpay-dotnet`](https://github.com/qpay-sdk/qpay-dotnet) | [NuGet](https://www.nuget.org/packages/QPay) | `dotnet add package QPay` |
+| **Swift** | [`qpay-swift`](https://github.com/qpay-sdk/qpay-swift) | [SPM](https://github.com/qpay-sdk/qpay-swift) | Swift Package Manager |
+| **cURL** | [`qpay-curl`](https://github.com/qpay-sdk/qpay-curl) | GitHub | `git clone` (shell scripts) |
+
+---
+
+## Framework Packages
+
+Framework-specific integration packages built on top of the core SDKs. Each package follows the conventions of its framework -- dependency injection, configuration, webhook routing, and UI components come pre-wired.
+
+| Framework | Package | Registry | GitHub |
+|---|---|---|---|
+| **Laravel** | `qpay-sdk/laravel` | Packagist | [qpay-laravel](https://github.com/qpay-sdk/qpay-laravel) |
+| **Django** | `django-qpay` | PyPI | [django-qpay](https://github.com/qpay-sdk/django-qpay) |
+| **Spring Boot** | `qpay-spring-boot-starter` | Maven Central | [qpay-spring-boot-starter](https://github.com/qpay-sdk/qpay-spring-boot-starter) |
+| **Express** | `@qpay-sdk/express` | npm | [qpay-express](https://github.com/qpay-sdk/qpay-express) |
+| **NestJS** | `@qpay-sdk/nestjs` | npm | [qpay-nestjs](https://github.com/qpay-sdk/qpay-nestjs) |
+| **Rails** | `qpay-rails` | RubyGems | [qpay-rails](https://github.com/qpay-sdk/qpay-rails) |
+| **ASP.NET Core** | `QPay.AspNetCore` | NuGet | [qpay-aspnetcore](https://github.com/qpay-sdk/qpay-aspnetcore) |
+| **Flutter** | `qpay_flutter` | pub.dev | [qpay-flutter](https://github.com/qpay-sdk/qpay-flutter) |
+| **FastAPI** | `fastapi-qpay` | PyPI | [fastapi-qpay](https://github.com/qpay-sdk/fastapi-qpay) |
+
+See the [Framework Packages documentation](/frameworks) for setup guides and usage details.
+
+---
+
+## CMS Plugins
+
+Drop-in payment plugins for popular e-commerce and CMS platforms. These plugins integrate directly with the QPay V2 API -- no SDK dependency required.
+
+| Platform | Plugin | GitHub |
 |---|---|---|
-| **Java** | [`qpay-java`](https://github.com/qpay-sdk/qpay-java) | Maven / Gradle (GitHub) |
-| **.NET (C#)** | [`qpay-dotnet`](https://github.com/qpay-sdk/qpay-dotnet) | `dotnet add reference` (GitHub) |
-| **Swift** | [`qpay-swift`](https://github.com/qpay-sdk/qpay-swift) | Swift Package Manager (GitHub) |
-| **cURL** | [`qpay-curl`](https://github.com/qpay-sdk/qpay-curl) | `git clone` (shell scripts) |
+| **WooCommerce** | `qpay-woocommerce` | [qpay-woocommerce](https://github.com/qpay-sdk/qpay-woocommerce) |
+| **Shopify** | `qpay-shopify` | [qpay-shopify](https://github.com/qpay-sdk/qpay-shopify) |
+| **OpenCart** | `qpay-opencart` | [qpay-opencart](https://github.com/qpay-sdk/qpay-opencart) |
+| **Magento** | `qpay-magento` | [qpay-magento](https://github.com/qpay-sdk/qpay-magento) |
+| **PrestaShop** | `qpay-prestashop` | [qpay-prestashop](https://github.com/qpay-sdk/qpay-prestashop) |
+| **WordPress** | `qpay-wordpress` | [qpay-wordpress](https://github.com/qpay-sdk/qpay-wordpress) |
+| **Odoo** | `qpay-odoo` | [qpay-odoo](https://github.com/qpay-sdk/qpay-odoo) |
+
+See the [CMS Plugins documentation](/plugins) for installation and configuration guides.
 
 ---
 
-## Quick Install
+## Quick Links
 
-### Go
-
-```bash
-go get github.com/qpay-sdk/qpay-go
-```
-
-### JavaScript / TypeScript
-
-```bash
-npm install qpay-js
-```
-
-### Python
-
-```bash
-pip install qpay-py
-```
-
-### PHP
-
-```bash
-composer require usukhbayar/qpay-php
-```
-
-### Java (Maven)
-
-```xml
-<dependency>
-    <groupId>mn.qpay</groupId>
-    <artifactId>qpay-java</artifactId>
-    <version>1.0.0</version>
-</dependency>
-```
-
-### Ruby
-
-```bash
-gem install qpay-sdk
-```
-
-### .NET
-
-```bash
-dotnet add package QPay
-```
-
-### Dart / Flutter
-
-```bash
-dart pub add qpay
-```
-
-### Swift
-
-```swift
-// Package.swift
-.package(url: "https://github.com/qpay-sdk/qpay-swift.git", from: "1.0.0")
-```
-
-### Rust
-
-```bash
-cargo add qpay
-```
-
-### cURL
-
-```bash
-git clone https://github.com/qpay-sdk/qpay-curl.git
-cd qpay-curl
-cp .env.example .env
-# Edit .env with your credentials
-source helpers/auth.sh
-./examples/invoice/create-simple.sh
-```
+| Section | Description |
+|---|---|
+| [Getting Started](/getting-started) | Step-by-step guide from zero to first payment |
+| [SDKs](/sdks) | Per-language SDK documentation with full API reference |
+| [Frameworks](/frameworks) | Framework-specific integration packages |
+| [CMS Plugins](/plugins) | E-commerce platform plugins |
+| [API Reference](/api-reference) | QPay V2 endpoint reference (auth, invoices, payments, ebarimt) |
+| [Error Codes](/error-codes) | Comprehensive error code reference and troubleshooting |
 
 ---
 
-## Key Features
+## API Environments
 
-All SDKs share the same design principles:
-
-- **Automatic Token Management** -- Tokens are obtained, cached, and refreshed automatically. You never need to manage authentication manually.
-- **Type-safe Models** -- Strongly typed request and response objects for all endpoints.
-- **Comprehensive Error Handling** -- Structured error types with QPay error codes, HTTP status codes, and raw response bodies.
-- **Full API Coverage** -- Invoices, payments, ebarimt (electronic tax receipts), and all QPay V2 endpoints.
-- **Environment Variable Config** -- Load configuration from environment variables or configure manually.
+| Environment | Base URL | Purpose |
+|---|---|---|
+| **Production** | `https://merchant.qpay.mn` | Live payments with real money |
+| **Sandbox** | `https://merchant-sandbox.qpay.mn` | Testing and development |
 
 ---
 
-## Get Started
+## Open Source
 
-Ready to integrate QPay? Head to the [Getting Started](/getting-started) guide or jump directly to your language's SDK page.
+All SDKs, framework packages, and CMS plugins are open source under the MIT license. Contributions are welcome.
+
+- **GitHub Organization**: [github.com/qpay-sdk](https://github.com/qpay-sdk)
+- **Documentation**: [github.com/qpay-sdk/qpay-docs](https://github.com/qpay-sdk/qpay-docs)

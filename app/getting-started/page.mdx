@@ -1,85 +1,246 @@
 # Getting Started
 
+This guide walks you through integrating QPay payments into your application -- from installing an SDK to receiving your first payment.
+
+---
+
 ## Prerequisites
 
-Before integrating QPay, you need:
+Before you begin, make sure you have:
 
-1. **A QPay Merchant Account** -- Contact QPay to obtain merchant credentials.
-2. **API Credentials** -- You will receive a username, password, and invoice code from QPay.
-3. **A Callback URL** -- A publicly accessible URL where QPay will send payment notifications.
+1. **A QPay Merchant Account** -- Contact [QPay](https://qpay.mn) to register as a merchant and obtain your credentials.
+2. **API Credentials** -- You will receive a **username**, **password**, and **invoice code** from QPay.
+3. **A Callback URL** -- A publicly accessible HTTPS endpoint where QPay will send payment notifications when a customer completes a payment.
 
-## Environment Variables
+> [!TIP]
+> For development and testing, use the sandbox environment at `https://merchant-sandbox.qpay.mn`. Switch to `https://merchant.qpay.mn` when you are ready to go live.
 
-All QPay SDKs can be configured using the same set of environment variables:
+---
 
-| Variable | Description | Example |
+## Step 1: Choose Your SDK
+
+Pick the SDK that matches your tech stack. All SDKs share the same design patterns, so the concepts you learn with one apply to all.
+
+| Language | Package | Install |
 |---|---|---|
-| `QPAY_BASE_URL` | QPay API base URL | `https://merchant.qpay.mn` |
-| `QPAY_USERNAME` | QPay merchant username | `your_username` |
-| `QPAY_PASSWORD` | QPay merchant password | `your_password` |
-| `QPAY_INVOICE_CODE` | Default invoice code | `YOUR_INVOICE_CODE` |
-| `QPAY_CALLBACK_URL` | Payment callback URL | `https://yoursite.com/callback` |
+| Go | [qpay-go](/sdks/go) | `go get github.com/qpay-sdk/qpay-go` |
+| JavaScript / TypeScript | [qpay-js](/sdks/javascript) | `npm install qpay-js` |
+| Python | [qpay-py](/sdks/python) | `pip install qpay-py` |
+| PHP | [qpay-php](/sdks/php) | `composer require usukhbayar/qpay-php` |
+| Ruby | [qpay-sdk](/sdks/ruby) | `gem install qpay-sdk` |
+| Dart / Flutter | [qpay](/sdks/dart) | `dart pub add qpay` |
+| Rust | [qpay](/sdks/rust) | `cargo add qpay` |
+| Java | [qpay-java](/sdks/java) | Maven / Gradle |
+| .NET (C#) | [QPay](/sdks/dotnet) | `dotnet add package QPay` |
+| Swift | [qpay-swift](/sdks/swift) | Swift Package Manager |
+| cURL | [qpay-curl](/sdks/curl) | `git clone` |
+
+If you are using a web framework, also check the [Framework Packages](/frameworks) (Laravel, Django, Spring Boot, Express, NestJS, Rails, ASP.NET Core, Flutter, FastAPI) for deeper integration with built-in webhook routing, DI, and configuration.
+
+---
+
+## Step 2: Installation
+
+Install the SDK for your language:
+
+### Go
+
+```bash
+go get github.com/qpay-sdk/qpay-go
+```
+
+### JavaScript / TypeScript
+
+```bash
+npm install qpay-js
+```
+
+### Python
+
+```bash
+pip install qpay-py
+```
+
+### PHP
+
+```bash
+composer require usukhbayar/qpay-php
+```
+
+### Java (Maven)
+
+```xml
+<dependency>
+    <groupId>mn.qpay</groupId>
+    <artifactId>qpay-java</artifactId>
+    <version>1.0.0</version>
+</dependency>
+```
+
+### Java (Gradle)
+
+```groovy
+implementation 'mn.qpay:qpay-java:1.0.0'
+```
+
+### Ruby
+
+```bash
+gem install qpay-sdk
+```
+
+### .NET
+
+```bash
+dotnet add package QPay
+```
+
+### Dart / Flutter
+
+```bash
+dart pub add qpay
+```
+
+### Swift (Package.swift)
+
+```swift
+.package(url: "https://github.com/qpay-sdk/qpay-swift.git", from: "1.0.0")
+```
+
+### Rust
+
+```bash
+cargo add qpay
+```
+
+---
+
+## Step 3: Configuration
+
+All QPay SDKs support the same set of environment variables. This is the recommended way to configure your credentials -- it keeps secrets out of your source code.
+
+### Environment Variables
+
+| Variable | Required | Description | Example |
+|---|---|---|---|
+| `QPAY_BASE_URL` | Yes | QPay API base URL | `https://merchant.qpay.mn` |
+| `QPAY_USERNAME` | Yes | Your merchant username | `MY_MERCHANT` |
+| `QPAY_PASSWORD` | Yes | Your merchant password | `s3cret_p@ss` |
+| `QPAY_INVOICE_CODE` | Yes | Your default invoice code | `MY_INVOICE_CODE` |
+| `QPAY_CALLBACK_URL` | Yes | Payment notification URL | `https://example.com/api/qpay/callback` |
 
 Create a `.env` file in your project root:
 
 ```bash filename=".env"
-QPAY_BASE_URL=https://merchant.qpay.mn
+QPAY_BASE_URL=https://merchant-sandbox.qpay.mn
 QPAY_USERNAME=your_username
 QPAY_PASSWORD=your_password
 QPAY_INVOICE_CODE=YOUR_INVOICE_CODE
-QPAY_CALLBACK_URL=https://yoursite.com/callback
+QPAY_CALLBACK_URL=https://yoursite.com/api/qpay/callback
 ```
 
-## Choose Your Language
+> [!WARNING]
+> Never commit your `.env` file to version control. Add it to your `.gitignore`.
 
-Pick the SDK for your tech stack:
+### Loading Configuration
 
-| Language | Link | Package Manager |
-|---|---|---|
-| Go | [Go SDK](/sdks/go) | `go get` |
-| JavaScript / TypeScript | [JS SDK](/sdks/javascript) | npm |
-| Python | [Python SDK](/sdks/python) | pip |
-| PHP | [PHP SDK](/sdks/php) | Composer |
-| Java | [Java SDK](/sdks/java) | Maven / Gradle |
-| Ruby | [Ruby SDK](/sdks/ruby) | RubyGems |
-| .NET (C#) | [.NET SDK](/sdks/dotnet) | NuGet |
-| Dart / Flutter | [Dart SDK](/sdks/dart) | pub |
-| Swift | [Swift SDK](/sdks/swift) | SPM |
-| Rust | [Rust SDK](/sdks/rust) | Cargo |
-| cURL | [cURL Examples](/sdks/curl) | Shell scripts |
+Every SDK provides a function to load config from environment variables:
 
-## Integration Flow
+```go
+// Go
+cfg, err := qpay.LoadConfigFromEnv()
+client := qpay.NewClient(cfg)
+```
 
-The typical QPay payment integration flow is:
+```typescript
+// JavaScript / TypeScript
+import { QPayClient, loadConfigFromEnv } from 'qpay-js';
+const client = new QPayClient(loadConfigFromEnv());
+```
 
-### 1. Create an Invoice
+```python
+# Python
+from qpay import QPayClient, QPayConfig
+config = QPayConfig.from_env()
+client = QPayClient(config)
+```
 
-Call the create invoice endpoint with the payment amount and description. The response includes a QR code image and deep links for mobile banking apps.
+```php
+// PHP
+use QPay\Config;
+use QPay\QPayClient;
+$config = Config::fromEnv();
+$client = new QPayClient($config);
+```
 
-### 2. Display Payment Options
+### Manual Configuration
 
-Show the QR code to the customer, or redirect them to a bank app using the deep links from the invoice response.
+You can also configure the client directly in code:
 
-### 3. Check Payment Status
+```typescript
+// JavaScript / TypeScript
+const client = new QPayClient({
+  baseUrl: 'https://merchant.qpay.mn',
+  username: 'YOUR_USERNAME',
+  password: 'YOUR_PASSWORD',
+  invoiceCode: 'YOUR_INVOICE_CODE',
+  callbackUrl: 'https://yoursite.com/api/qpay/callback',
+});
+```
 
-Poll the check payment endpoint to verify when the customer has completed the payment. Alternatively, implement the callback URL to receive payment notifications from QPay.
+---
 
-### 4. Issue a Tax Receipt (Optional)
+## Step 4: Create Your First Invoice
 
-After payment is confirmed, you can create an ebarimt (electronic tax receipt) for the transaction.
+An invoice is how you request payment from a customer. When you create an invoice, QPay returns a QR code image (base64-encoded) and deep links for mobile banking apps.
 
-## Quick Example
+### Go
 
-Here is a complete example using the JavaScript SDK:
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	qpay "github.com/qpay-sdk/qpay-go"
+)
+
+func main() {
+	cfg, err := qpay.LoadConfigFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	client := qpay.NewClient(cfg)
+
+	invoice, err := client.CreateSimpleInvoice(context.Background(), &qpay.CreateSimpleInvoiceRequest{
+		InvoiceCode:         cfg.InvoiceCode,
+		SenderInvoiceNo:     "ORDER-001",
+		InvoiceReceiverCode: "terminal",
+		InvoiceDescription:  "Payment for Order #001",
+		Amount:              50000,
+		CallbackURL:         cfg.CallbackURL,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Invoice ID: %s\n", invoice.InvoiceID)
+	fmt.Printf("QR Image:   %s\n", invoice.QRImage)     // base64 PNG
+	fmt.Printf("Short URL:  %s\n", invoice.QPay_ShortURL)
+}
+```
+
+### JavaScript / TypeScript
 
 ```typescript
 import { QPayClient, loadConfigFromEnv } from 'qpay-js';
 
-// Load configuration from environment variables
 const config = loadConfigFromEnv();
 const client = new QPayClient(config);
 
-// Step 1: Create an invoice
 const invoice = await client.createSimpleInvoice({
   invoiceCode: config.invoiceCode,
   senderInvoiceNo: 'ORDER-001',
@@ -90,25 +251,293 @@ const invoice = await client.createSimpleInvoice({
 });
 
 console.log('Invoice ID:', invoice.invoiceId);
-console.log('QR Image (base64):', invoice.qrImage);
-console.log('Payment URL:', invoice.qPayShortUrl);
+console.log('QR Image:', invoice.qrImage);       // base64 PNG
+console.log('Short URL:', invoice.qPayShortUrl);
+```
 
-// Step 2: Check payment status
-const check = await client.checkPayment({
+### Python
+
+```python
+from qpay import QPayClient, QPayConfig, CreateSimpleInvoiceRequest
+
+config = QPayConfig.from_env()
+
+with QPayClient(config) as client:
+    invoice = client.create_simple_invoice(
+        CreateSimpleInvoiceRequest(
+            invoice_code=config.invoice_code,
+            sender_invoice_no="ORDER-001",
+            invoice_receiver_code="terminal",
+            invoice_description="Payment for Order #001",
+            amount=50000.0,
+            callback_url=config.callback_url,
+        )
+    )
+
+    print(f"Invoice ID: {invoice.invoice_id}")
+    print(f"QR Image:   {invoice.qr_image}")       # base64 PNG
+    print(f"Short URL:  {invoice.qpay_short_url}")
+```
+
+### PHP
+
+```php
+use QPay\Config;
+use QPay\QPayClient;
+use QPay\Models\CreateSimpleInvoiceRequest;
+
+$config = Config::fromEnv();
+$client = new QPayClient($config);
+
+$invoice = $client->createSimpleInvoice(new CreateSimpleInvoiceRequest(
+    invoiceCode: $config->invoiceCode,
+    senderInvoiceNo: 'ORDER-001',
+    invoiceReceiverCode: 'terminal',
+    invoiceDescription: 'Payment for Order #001',
+    amount: 50000.0,
+    callbackUrl: $config->callbackUrl,
+));
+
+echo "Invoice ID: " . $invoice->invoiceId . "\n";
+echo "QR Image:   " . $invoice->qrImage . "\n";       // base64 PNG
+echo "Short URL:  " . $invoice->qPayShortUrl . "\n";
+```
+
+### Invoice Response
+
+The invoice response contains everything you need to present payment options to the customer:
+
+| Field | Description |
+|---|---|
+| `invoiceId` | Unique invoice identifier (use this for payment checks) |
+| `qrImage` | Base64-encoded PNG of the QR code -- display this to the customer |
+| `qPayShortUrl` | Short URL that opens the QPay payment page |
+| `urls` | Array of deep links for specific mobile banking apps |
+
+> [!TIP]
+> Display the QR code for desktop users and use the deep links (`urls`) to redirect mobile users directly to their banking app.
+
+---
+
+## Step 5: Check Payment Status
+
+After the customer scans the QR code or opens a banking app link, you need to verify whether the payment was completed. There are two approaches: **polling** and **webhooks**.
+
+### Polling (Check Payment)
+
+Call the `checkPayment` method with the invoice ID to see if any payments have been made:
+
+### Go
+
+```go
+result, err := client.CheckPayment(ctx, &qpay.PaymentCheckRequest{
+	ObjectType: "INVOICE",
+	ObjectID:   invoice.InvoiceID,
+	Offset: &qpay.Offset{
+		PageNumber: 1,
+		PageLimit:  10,
+	},
+})
+
+if result.Count > 0 {
+	fmt.Printf("Payment received! Paid amount: %.0f MNT\n", result.PaidAmount)
+} else {
+	fmt.Println("Waiting for payment...")
+}
+```
+
+### JavaScript / TypeScript
+
+```typescript
+const result = await client.checkPayment({
   objectType: 'INVOICE',
   objectId: invoice.invoiceId,
   offset: { pageNumber: 1, pageLimit: 10 },
 });
 
-if (check.count > 0) {
-  console.log('Payment received! Amount:', check.paidAmount);
+if (result.count > 0) {
+  console.log('Payment received! Paid amount:', result.paidAmount);
 } else {
   console.log('Waiting for payment...');
 }
 ```
 
-## Next Steps
+### Python
 
-- Browse the [SDK documentation](/sdks) for your language
-- Review the [API Reference](/api-reference) for endpoint details
-- Check the [Error Codes](/error-codes) reference for troubleshooting
+```python
+from qpay import PaymentCheckRequest, Offset
+
+result = client.check_payment(
+    PaymentCheckRequest(
+        object_type="INVOICE",
+        object_id=invoice.invoice_id,
+        offset=Offset(page_number=1, page_limit=10),
+    )
+)
+
+if result.count > 0:
+    print(f"Payment received! Paid amount: {result.paid_amount} MNT")
+else:
+    print("Waiting for payment...")
+```
+
+### PHP
+
+```php
+use QPay\Models\PaymentCheckRequest;
+
+$result = $client->checkPayment(new PaymentCheckRequest(
+    objectType: 'INVOICE',
+    objectId: $invoice->invoiceId,
+    pageNumber: 1,
+    pageLimit: 10,
+));
+
+if ($result->count > 0) {
+    echo "Payment received! Paid amount: {$result->paidAmount} MNT\n";
+} else {
+    echo "Waiting for payment...\n";
+}
+```
+
+> [!NOTE]
+> In a real application, poll at reasonable intervals (e.g., every 3-5 seconds) and stop after a timeout. Do not poll indefinitely.
+
+---
+
+## Step 6: Handle Webhooks (Callbacks)
+
+QPay sends an HTTP POST request to your `QPAY_CALLBACK_URL` when a payment is completed. This is more efficient than polling and is recommended for production use.
+
+### How Callbacks Work
+
+1. You set `callbackUrl` when creating the invoice.
+2. When the customer completes the payment, QPay sends a POST request to that URL.
+3. Your server receives the notification and verifies the payment using `checkPayment`.
+4. You update the order status in your database.
+
+### Example: Express.js Webhook Handler
+
+```typescript
+import express from 'express';
+import { QPayClient, loadConfigFromEnv } from 'qpay-js';
+
+const app = express();
+app.use(express.json());
+
+const client = new QPayClient(loadConfigFromEnv());
+
+app.post('/api/qpay/callback', async (req, res) => {
+  const { invoice_id } = req.body;
+
+  // Always verify the payment with QPay -- never trust the callback alone
+  const result = await client.checkPayment({
+    objectType: 'INVOICE',
+    objectId: invoice_id,
+    offset: { pageNumber: 1, pageLimit: 10 },
+  });
+
+  if (result.count > 0) {
+    // Payment confirmed -- update your order status
+    console.log(`Payment confirmed for invoice ${invoice_id}`);
+    console.log(`Paid amount: ${result.paidAmount}`);
+    // await updateOrderStatus(invoice_id, 'paid');
+  }
+
+  res.status(200).json({ status: 'ok' });
+});
+```
+
+### Example: Python (Flask) Webhook Handler
+
+```python
+from flask import Flask, request, jsonify
+from qpay import QPayClient, QPayConfig, PaymentCheckRequest, Offset
+
+app = Flask(__name__)
+config = QPayConfig.from_env()
+client = QPayClient(config)
+
+@app.post("/api/qpay/callback")
+def qpay_callback():
+    data = request.get_json()
+    invoice_id = data.get("invoice_id")
+
+    # Always verify the payment with QPay
+    result = client.check_payment(
+        PaymentCheckRequest(
+            object_type="INVOICE",
+            object_id=invoice_id,
+            offset=Offset(page_number=1, page_limit=10),
+        )
+    )
+
+    if result.count > 0:
+        print(f"Payment confirmed for invoice {invoice_id}")
+        print(f"Paid amount: {result.paid_amount}")
+        # update_order_status(invoice_id, "paid")
+
+    return jsonify({"status": "ok"}), 200
+```
+
+### Example: Go Webhook Handler
+
+```go
+http.HandleFunc("/api/qpay/callback", func(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		InvoiceID string `json:"invoice_id"`
+	}
+	json.NewDecoder(r.Body).Decode(&body)
+
+	// Always verify the payment with QPay
+	result, err := client.CheckPayment(r.Context(), &qpay.PaymentCheckRequest{
+		ObjectType: "INVOICE",
+		ObjectID:   body.InvoiceID,
+		Offset:     &qpay.Offset{PageNumber: 1, PageLimit: 10},
+	})
+	if err != nil {
+		http.Error(w, "check failed", http.StatusInternalServerError)
+		return
+	}
+
+	if result.Count > 0 {
+		log.Printf("Payment confirmed for invoice %s, amount: %.0f", body.InvoiceID, result.PaidAmount)
+		// updateOrderStatus(body.InvoiceID, "paid")
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+})
+```
+
+> [!WARNING]
+> Always verify the payment by calling `checkPayment` after receiving a callback. Never rely solely on the callback data -- it could be spoofed by a third party.
+
+---
+
+## Integration Flow Summary
+
+Here is the complete payment integration flow:
+
+```
+1. Customer places an order on your site
+2. Your server calls createSimpleInvoice() with the order amount
+3. QPay returns a QR code + deep links
+4. You display the QR code / redirect to banking app
+5. Customer pays via their bank
+6. QPay sends a callback to your server (POST)
+7. Your server calls checkPayment() to verify
+8. You mark the order as paid
+```
+
+---
+
+## What's Next?
+
+Now that you have the basics working, explore these resources:
+
+- **[SDK Documentation](/sdks)** -- Detailed guides for each language with full API reference
+- **[API Reference](/api-reference)** -- Complete endpoint documentation for authentication, invoices, payments, and ebarimt
+- **[Framework Packages](/frameworks)** -- Pre-built integrations for Laravel, Django, Spring Boot, Express, NestJS, Rails, ASP.NET Core, Flutter, and FastAPI
+- **[CMS Plugins](/plugins)** -- Drop-in payment plugins for WooCommerce, Shopify, OpenCart, Magento, PrestaShop, WordPress, and Odoo
+- **[Error Codes](/error-codes)** -- Comprehensive error reference for debugging and troubleshooting
