@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 
 const LANGUAGES = [
   { name: 'Go', cmd: 'go get github.com/qpay-sdk/qpay-go', color: '#00ADD8' },
@@ -178,8 +179,8 @@ export function HomeHero() {
         gap: '0.75rem',
         flexWrap: 'wrap',
       }}>
-        <a
-          href="/qpay-docs/getting-started"
+        <Link
+          href="/getting-started"
           style={{
             display: 'inline-block',
             padding: '0.7rem 1.5rem',
@@ -193,7 +194,7 @@ export function HomeHero() {
           }}
         >
           Get Started
-        </a>
+        </Link>
         <a
           href="https://github.com/qpay-sdk"
           target="_blank"
