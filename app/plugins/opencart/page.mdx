@@ -1,0 +1,45 @@
+# OpenCart
+
+QPay V2 payment extension for OpenCart 4.x.
+
+- **GitHub**: [qpay-sdk/qpay-opencart](https://github.com/qpay-sdk/qpay-opencart)
+
+## Installation
+
+1. Copy the `upload/` folder contents to your OpenCart root directory
+2. Go to **Extensions → Payments** in admin panel
+3. Find **QPay** and click **Install**, then **Edit** to configure
+
+## Configuration
+
+| Setting | Description |
+|---------|-------------|
+| Base URL | `https://merchant.qpay.mn` |
+| Username | QPay merchant username |
+| Password | QPay merchant password |
+| Invoice Code | Your invoice code |
+| Callback URL | Auto-generated webhook URL |
+| Status | Enable/Disable |
+
+## File Structure
+
+```
+upload/
+├── admin/
+│   ├── controller/extension/payment/qpay.php
+│   ├── language/en-gb/extension/payment/qpay.php
+│   └── view/template/extension/payment/qpay.twig
+├── catalog/
+│   ├── controller/extension/payment/qpay.php
+│   ├── language/en-gb/extension/payment/qpay.php
+│   └── view/template/extension/payment/qpay.twig
+└── system/
+    └── library/qpay.php          # QPay V2 API client
+```
+
+## How It Works
+
+1. Customer selects QPay at checkout
+2. Catalog controller creates invoice via `system/library/qpay.php`
+3. Payment page shows QR code and bank deep links
+4. QPay sends webhook → order status updated

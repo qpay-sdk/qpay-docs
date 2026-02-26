@@ -1,0 +1,53 @@
+# PrestaShop
+
+QPay V2 payment module for PrestaShop 8.x.
+
+- **GitHub**: [qpay-sdk/qpay-prestashop](https://github.com/qpay-sdk/qpay-prestashop)
+
+## Installation
+
+1. Zip the `qpay/` folder
+2. Go to **Modules → Module Manager** in admin
+3. Click **Upload a module** and upload the zip
+4. Configure the module settings
+
+## Configuration
+
+| Setting | Description |
+|---------|-------------|
+| Base URL | `https://merchant.qpay.mn` |
+| Username | QPay merchant username |
+| Password | QPay merchant password |
+| Invoice Code | Your invoice code |
+| Callback URL | Webhook URL |
+
+## Module Structure
+
+```
+qpay/
+├── qpay.php                    # Main module class
+├── classes/
+│   └── QPayApi.php             # QPay V2 API client
+├── controllers/front/
+│   ├── payment.php             # Payment page controller
+│   ├── validation.php          # Payment validation
+│   └── check.php               # AJAX payment status check
+├── views/templates/front/
+│   └── payment.tpl             # Smarty payment template
+└── translations/
+```
+
+## Hooks
+
+The module registers these PrestaShop hooks:
+
+- `paymentOptions` — Adds QPay as payment option at checkout
+- `paymentReturn` — Displays payment confirmation
+
+## How It Works
+
+1. Customer selects QPay at checkout (`paymentOptions` hook)
+2. Redirected to payment controller → QPay invoice created
+3. QR code and bank links displayed via Smarty template
+4. AJAX polling checks payment status
+5. QPay webhook validates payment → order status updated

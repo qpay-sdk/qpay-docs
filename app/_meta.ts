@@ -13,6 +13,12 @@ export default {
   sdks: {
     title: 'SDKs',
   },
+  frameworks: {
+    title: 'Frameworks',
+  },
+  plugins: {
+    title: 'CMS Plugins',
+  },
   'api-reference': {
     title: 'API Reference',
   },

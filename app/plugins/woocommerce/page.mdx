@@ -1,0 +1,46 @@
+# WooCommerce
+
+QPay V2 payment gateway for WooCommerce. Extends `WC_Payment_Gateway`.
+
+- **GitHub**: [qpay-sdk/qpay-woocommerce](https://github.com/qpay-sdk/qpay-woocommerce)
+
+## Installation
+
+1. Download the plugin and upload to `wp-content/plugins/qpay-woocommerce/`
+2. Activate in **Plugins** menu
+3. Go to **WooCommerce → Settings → Payments → QPay** to configure
+
+## Configuration
+
+| Setting | Description |
+|---------|-------------|
+| Base URL | `https://merchant.qpay.mn` |
+| Username | QPay merchant username |
+| Password | QPay merchant password |
+| Invoice Code | Your invoice code |
+| Callback URL | Webhook URL (auto-generated) |
+
+## How It Works
+
+1. Customer selects QPay at checkout
+2. Plugin creates invoice via QPay V2 API
+3. QR code and bank deep links displayed on payment page
+4. Customer pays via bank app
+5. QPay sends webhook callback → order marked as paid
+6. AJAX polling also checks payment status client-side
+
+## Files
+
+```
+qpay-woocommerce/
+├── qpay-woocommerce.php         # Main plugin file
+├── includes/
+│   ├── class-qpay-api.php       # QPay V2 API client
+│   ├── class-qpay-gateway.php   # WC_Payment_Gateway extension
+│   └── class-qpay-webhook.php   # Webhook handler
+├── templates/
+│   └── payment.php              # QR code + bank links page
+└── assets/
+    ├── css/qpay.css
+    └── js/qpay.js               # AJAX payment polling
+```

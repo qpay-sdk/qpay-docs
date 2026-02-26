@@ -1,0 +1,50 @@
+# Spring Boot
+
+QPay V2 payment starter for Spring Boot. Wraps [qpay-java](https://github.com/qpay-sdk/qpay-java) SDK.
+
+- **GitHub**: [qpay-sdk/qpay-spring-boot-starter](https://github.com/qpay-sdk/qpay-spring-boot-starter)
+
+## Installation
+
+```xml
+<dependency>
+    <groupId>mn.qpay</groupId>
+    <artifactId>qpay-spring-boot-starter</artifactId>
+    <version>1.0.0</version>
+</dependency>
+```
+
+## Configuration
+
+```properties
+qpay.base-url=https://merchant.qpay.mn
+qpay.username=your_username
+qpay.password=your_password
+qpay.invoice-code=your_invoice_code
+qpay.callback-url=https://yoursite.com/qpay/webhook
+```
+
+## Usage
+
+```java
+@Autowired
+private QPayTemplate qpay;
+
+InvoiceResponse invoice = qpay.createSimpleInvoice("ORDER-001", 10000);
+```
+
+## Webhook Events
+
+```java
+@EventListener
+public void onPayment(QPayWebhookEvent event) {
+    String invoiceId = event.getInvoiceId();
+}
+```
+
+## Thymeleaf
+
+```html
+<div th:replace="~{fragments/qpay :: qr-code(${invoice.qrImage}, 256)}"></div>
+<div th:replace="~{fragments/qpay :: payment-buttons(${invoice.urls})}"></div>
+```

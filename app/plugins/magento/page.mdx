@@ -1,0 +1,55 @@
+# Magento
+
+QPay V2 payment module for Magento 2.
+
+- **GitHub**: [qpay-sdk/qpay-magento](https://github.com/qpay-sdk/qpay-magento)
+
+## Installation
+
+```bash
+composer require qpay-sdk/magento
+php bin/magento module:enable QPay_Payment
+php bin/magento setup:upgrade
+php bin/magento cache:clean
+```
+
+## Configuration
+
+Go to **Stores → Configuration → Sales → Payment Methods → QPay Payment**.
+
+| Setting | Description |
+|---------|-------------|
+| Enabled | Yes/No |
+| Title | Display name at checkout |
+| Base URL | `https://merchant.qpay.mn` |
+| Username | QPay merchant username |
+| Password | QPay merchant password |
+| Invoice Code | Your invoice code |
+| Callback URL | Webhook URL |
+
+## Module Structure
+
+```
+QPay/Payment/
+├── registration.php
+├── composer.json
+├── etc/
+│   ├── module.xml
+│   ├── config.xml              # Default config values
+│   └── adminhtml/system.xml    # Admin config fields
+├── Model/
+│   ├── QPayClient.php          # QPay V2 API client
+│   └── QPayPaymentMethod.php   # Payment method model
+├── Controller/
+│   ├── Payment/Create.php      # Create invoice action
+│   └── Payment/Webhook.php     # Webhook handler
+└── view/
+    └── frontend/templates/     # Payment templates
+```
+
+## How It Works
+
+1. Customer selects QPay at checkout
+2. Controller creates QPay invoice via V2 API
+3. QR code page displayed to customer
+4. QPay webhook notifies payment → order updated to "Processing"

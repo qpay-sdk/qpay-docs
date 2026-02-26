@@ -1,0 +1,55 @@
+# Shopify
+
+QPay V2 payment app for Shopify. Node.js/Express app that integrates with Shopify's payment flow.
+
+- **GitHub**: [qpay-sdk/qpay-shopify](https://github.com/qpay-sdk/qpay-shopify)
+
+## Installation
+
+```bash
+npm install
+```
+
+## Configuration
+
+```bash
+SHOPIFY_API_KEY=your_shopify_api_key
+SHOPIFY_API_SECRET=your_shopify_secret
+QPAY_BASE_URL=https://merchant.qpay.mn
+QPAY_USERNAME=your_username
+QPAY_PASSWORD=your_password
+QPAY_INVOICE_CODE=your_invoice_code
+QPAY_CALLBACK_URL=https://yourapp.com/webhooks/qpay
+PORT=3000
+```
+
+## How It Works
+
+1. Shopify redirects customer to the app's payment page
+2. App creates QPay invoice via V2 API
+3. QR code and bank deep links shown to customer
+4. Customer pays → QPay webhook confirms payment
+5. App notifies Shopify that payment is complete
+
+## Project Structure
+
+```
+qpay-shopify/
+├── src/
+│   ├── index.js              # Express app entry
+│   ├── config.js             # Environment config
+│   ├── qpay-client.js        # QPay V2 API client
+│   ├── routes/
+│   │   ├── payment.js        # Payment flow routes
+│   │   ├── webhook.js        # QPay webhook handler
+│   │   └── gdpr.js           # Shopify GDPR endpoints
+│   └── views/
+│       └── payment.ejs       # Payment page template
+└── package.json
+```
+
+## Running
+
+```bash
+npm start
+```

@@ -1,0 +1,63 @@
+# ASP.NET Core
+
+QPay V2 payment integration for ASP.NET Core. Wraps [QPay](https://github.com/qpay-sdk/qpay-dotnet) NuGet package.
+
+- **GitHub**: [qpay-sdk/qpay-aspnetcore](https://github.com/qpay-sdk/qpay-aspnetcore)
+
+## Installation
+
+```bash
+dotnet add package QPay.AspNetCore
+```
+
+## Configuration
+
+```csharp
+builder.Services.AddQPay(options =>
+{
+    options.BaseUrl = "https://merchant.qpay.mn";
+    options.Username = "your_username";
+    options.Password = "your_password";
+    options.InvoiceCode = "YOUR_CODE";
+    options.CallbackUrl = "https://yoursite.com/api/qpay/webhook";
+});
+
+app.UseQPayWebhook();
+```
+
+## Usage
+
+```csharp
+public class PaymentController : ControllerBase
+{
+    private readonly IQPayService _qpay;
+    public PaymentController(IQPayService qpay) => _qpay = qpay;
+
+    [HttpPost("pay")]
+    public async Task<IActionResult> Pay()
+    {
+        var invoice = await _qpay.CreateSimpleInvoiceAsync(new CreateSimpleInvoiceRequest
+        {
+            InvoiceCode = "YOUR_CODE",
+            SenderInvoiceNo = "ORDER-001",
+            Amount = 10000,
+            CallbackUrl = "https://yoursite.com/api/qpay/webhook",
+        });
+        return Ok(invoice);
+    }
+}
+```
+
+## Event Handler
+
+```csharp
+public class MyPaymentHandler : IQPayEventHandler
+{
+    public Task HandlePaymentAsync(QPayPaymentEvent e)
+    {
+        if (e.IsPaid) { /* process */ }
+        return Task.CompletedTask;
+    }
+}
+builder.Services.AddSingleton<IQPayEventHandler, MyPaymentHandler>();
+```

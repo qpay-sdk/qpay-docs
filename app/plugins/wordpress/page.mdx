@@ -1,0 +1,62 @@
+# WordPress
+
+QPay V2 payment forms for WordPress. Standalone plugin — no WooCommerce required.
+
+- **GitHub**: [qpay-sdk/qpay-wordpress](https://github.com/qpay-sdk/qpay-wordpress)
+
+## Installation
+
+1. Upload `qpay-payment/` to `wp-content/plugins/`
+2. Activate in **Plugins** menu
+3. Go to **Settings → QPay Payment** to configure
+
+## Configuration
+
+| Setting | Description |
+|---------|-------------|
+| Base URL | `https://merchant.qpay.mn` |
+| Username | QPay merchant username |
+| Password | QPay merchant password |
+| Invoice Code | Your invoice code |
+| Callback URL | Webhook URL (auto-generated) |
+
+## Shortcode
+
+Add a payment form to any page or post:
+
+```
+[qpay_form amount="10000" description="Product payment"]
+```
+
+## How It Works
+
+1. Visitor submits payment form (shortcode)
+2. AJAX request creates QPay invoice via V2 API
+3. QR code and bank deep links displayed
+4. Payment status polled via AJAX
+5. QPay webhook confirms payment → stored in `wp_qpay_payments` table
+
+## Plugin Structure
+
+```
+qpay-payment/
+├── qpay-payment.php            # Main plugin file
+├── includes/
+│   ├── class-qpay-api.php      # QPay V2 API client
+│   ├── class-qpay-admin.php    # Admin settings page
+│   ├── class-qpay-shortcode.php # [qpay_form] shortcode
+│   └── class-qpay-ajax.php     # AJAX handlers
+├── public/
+│   ├── css/qpay.css
+│   └── js/qpay.js
+└── templates/
+    └── payment-form.php
+```
+
+## Database
+
+On activation, creates `{prefix}_qpay_payments` table to track:
+- `invoice_id` — QPay invoice ID
+- `amount` — Payment amount
+- `status` — pending / paid / failed
+- `sender_invoice_no` — Your reference number
