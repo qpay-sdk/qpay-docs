@@ -5,7 +5,6 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "postbuild": "pagefind --site out --output-path out/qpay-docs/_pagefind",
     "start": "next start"
   },
   "dependencies": {
