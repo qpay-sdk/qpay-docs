@@ -76,7 +76,7 @@ https://merchant-sandbox.qpay.mn
 5. **Payment Confirmation**: When payment is detected:
    - The order status is updated to the configured "Order Status (Paid)" value via `addHistory()`
    - The customer is redirected to the checkout success page
-6. **Webhook Callback**: QPay also sends a POST to the callback URL (`extension/payment/qpay.callback`)
+6. **Webhook Callback**: QPay also sends a GET request to the callback URL (`extension/payment/qpay.callback`) with `qpay_payment_id` as a query parameter
 
 ### Invoice Data Mapping
 
@@ -99,9 +99,9 @@ The callback URL can be configured in the admin panel settings. If left empty, i
 https://yourstore.com/index.php?route=extension/payment/qpay.callback
 ```
 
-The callback endpoint receives a JSON POST body containing the `invoice_id` from QPay. It verifies the payment and returns a JSON acknowledgment.
+The callback endpoint receives a GET request from QPay with `qpay_payment_id` as a query parameter. It uses this payment ID to verify the payment status and returns a JSON acknowledgment.
 
-Make sure the callback URL is publicly accessible. For OpenCart installations behind a reverse proxy, ensure the proxy passes POST requests to the callback route.
+Make sure the callback URL is publicly accessible. For OpenCart installations behind a reverse proxy, ensure the proxy passes GET requests to the callback route.
 
 ---
 
@@ -169,8 +169,8 @@ Add additional language files for localization by creating corresponding files i
 
 - Ensure the callback URL is publicly accessible
 - Verify the Order Status (Paid) dropdown is set to a valid status
-- Test the callback URL manually with a POST request containing `{"invoice_id": "test"}`
-- Check for mod_security or firewall rules blocking JSON POST requests
+- Test the callback URL manually with a GET request: `?qpay_payment_id=test`
+- Check for mod_security or firewall rules blocking callback requests
 
 ### Payment page is blank
 

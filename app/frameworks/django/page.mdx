@@ -93,7 +93,7 @@ urlpatterns = [
 ]
 ```
 
-This registers the webhook endpoint at `POST /qpay/webhook/`.
+This registers the webhook endpoint at `GET /qpay/webhook/`.
 
 ### Create an Invoice
 
@@ -192,15 +192,15 @@ def create_payment(request):
 
 ## Webhook Handling
 
-The package includes a built-in webhook view at `POST /qpay/webhook/` (when you include the URLs as shown above). The CSRF exemption is handled automatically.
+The package includes a built-in webhook view at `GET /qpay/webhook/` (when you include the URLs as shown above). The CSRF exemption is handled automatically.
 
 When QPay sends a callback:
 
-1. The view parses the `invoice_id` from the JSON body
+1. The view reads the `qpay_payment_id` from the query parameters
 2. Calls `check_payment` to verify the payment status
 3. Sends the `payment_received` signal if payment rows are found
 4. Sends the `payment_failed` signal if no payment is found or an error occurs
-5. Returns a JSON response
+5. Returns a plain text `SUCCESS` response
 
 ### Webhook URL Pattern
 
@@ -364,14 +364,13 @@ class WebhookTest(TestCase):
         mock_client.check_payment.return_value = mock_result
         mock_get_client.return_value = mock_client
 
-        response = self.client.post(
+        response = self.client.get(
             "/qpay/webhook/",
-            data={"invoice_id": "inv_123"},
-            content_type="application/json",
+            {"qpay_payment_id": "pay_123"},
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["status"], "paid")
+        self.assertEqual(response.content.decode(), "SUCCESS")
 ```
 
 ### Testing Signals
@@ -424,7 +423,7 @@ def test_signal_received(self):
 
 | View | URL | Method | Description |
 |------|-----|--------|-------------|
-| `WebhookView` | `/webhook/` | POST | Webhook callback handler |
+| `WebhookView` | `/webhook/` | GET | Webhook callback handler |
 
 ---
 

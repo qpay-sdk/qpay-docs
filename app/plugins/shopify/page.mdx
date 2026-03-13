@@ -112,7 +112,7 @@ https://merchant-sandbox.qpay.mn
 5. **Payment Confirmation**: When payment is detected:
    - The status message changes to "Payment confirmed!"
    - After 1.5 seconds, the customer is redirected back to Shopify's return URL
-6. **Webhook**: QPay also sends a server-side callback to `POST /webhook/qpay` for reliable confirmation
+6. **Webhook**: QPay also sends a server-side callback to `GET /webhook/qpay?qpay_payment_id=<id>` for reliable confirmation
 
 ### API Endpoints
 
@@ -120,7 +120,7 @@ https://merchant-sandbox.qpay.mn
 |--------|------|-------------|
 | `POST` | `/payment/initiate` | Creates a QPay invoice and renders the payment page |
 | `GET` | `/payment/check/:invoiceId` | Checks payment status for an invoice (returns `{ paid: true/false }`) |
-| `POST` | `/webhook/qpay` | Receives QPay webhook callbacks |
+| `GET` | `/webhook/qpay` | Receives QPay webhook callbacks (via `qpay_payment_id` query parameter) |
 | `POST` | `/gdpr/customers/data_request` | Shopify GDPR data request handler |
 | `POST` | `/gdpr/customers/redact` | Shopify GDPR customer data redaction |
 | `POST` | `/gdpr/shop/redact` | Shopify GDPR shop data redaction |
@@ -149,7 +149,7 @@ Configure your QPay callback URL to point to:
 https://your-app-domain.com/webhook/qpay
 ```
 
-The webhook handler receives a JSON POST body with `invoice_id`, verifies the payment via `POST /v2/payment/check`, and returns the payment status.
+The webhook handler receives a `qpay_payment_id` query parameter, verifies the payment via `POST /v2/payment/check`, and returns the payment status.
 
 ### Shopify GDPR Webhooks
 
@@ -224,7 +224,7 @@ app.use('/custom', customRoutes);
 
 - Ensure `QPAY_CALLBACK_URL` is a publicly accessible HTTPS URL
 - For local development, use a tunneling service (ngrok, localtunnel)
-- Verify the webhook endpoint responds to POST requests
+- Verify the webhook endpoint responds to GET requests
 
 ### Payment polling stuck on "Waiting..."
 
@@ -244,7 +244,7 @@ qpay-shopify/
 │   ├── qpay-client.js        # QPay V2 API client (auth, invoice, check)
 │   ├── routes/
 │   │   ├── payment.js        # POST /payment/initiate, GET /payment/check/:id
-│   │   ├── webhook.js        # POST /webhook/qpay
+│   │   ├── webhook.js        # GET /webhook/qpay
 │   │   └── gdpr.js           # Shopify GDPR mandatory endpoints
 │   └── views/
 │       └── payment.ejs       # Payment page template (QR code + bank links)

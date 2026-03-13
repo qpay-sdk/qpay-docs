@@ -177,25 +177,26 @@ $payment = QPay::getPayment($paymentId);
 
 ## Webhook Handling
 
-The package automatically registers a webhook route at the configured path (default: `/qpay/webhook`). The route is excluded from CSRF verification.
+The package automatically registers a webhook route at the configured path (default: `/qpay/webhook`). QPay sends callbacks as GET requests with the payment ID as a query parameter.
 
-When QPay sends a callback, the webhook controller:
+When QPay sends a callback via GET request, the webhook controller:
 
-1. Extracts the `invoice_id` from the request body
+1. Extracts the `qpay_payment_id` from the query parameters
 2. Calls `checkPayment` to verify the payment
 3. Dispatches a `PaymentReceived` event if payment rows are found
 4. Dispatches a `PaymentFailed` event if no payment is found or an error occurs
-5. Returns a JSON response with the status
+5. Returns a plain text `SUCCESS` response
 
 ### Webhook Route
 
 The route is registered automatically in `routes/qpay.php`:
 
 ```php
-Route::post(config('qpay.webhook_path', '/qpay/webhook'), WebhookController::class)
-    ->name('qpay.webhook')
-    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
+Route::get(config('qpay.webhook_path', '/qpay/webhook'), WebhookController::class)
+    ->name('qpay.webhook');
 ```
+
+> Since QPay callbacks use GET requests, CSRF verification is not needed.
 
 You can customize the webhook path via the `QPAY_WEBHOOK_PATH` environment variable.
 
@@ -321,10 +322,10 @@ use QPay\Laravel\Events\PaymentReceived;
 
 Event::fake();
 
-$this->postJson('/qpay/webhook', ['invoice_id' => 'inv_123']);
+$this->get('/qpay/webhook?qpay_payment_id=pay_123');
 
 Event::assertDispatched(PaymentReceived::class, function ($event) {
-    return $event->invoiceId === 'inv_123';
+    return $event->invoiceId === 'pay_123';
 });
 ```
 

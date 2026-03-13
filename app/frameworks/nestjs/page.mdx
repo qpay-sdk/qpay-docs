@@ -208,7 +208,7 @@ const client = this.qpay.getClient();
 
 ### Built-in Webhook Controller
 
-The package includes a `QPayWebhookController` that handles `POST /qpay/webhook`:
+The package includes a `QPayWebhookController` that handles `GET /qpay/webhook`:
 
 ```typescript
 import { Module } from '@nestjs/common';
@@ -222,16 +222,16 @@ export class AppModule {}
 ```
 
 The controller:
-1. Accepts `POST /qpay/webhook` with `{ invoice_id: string }` body
+1. Accepts `GET /qpay/webhook?qpay_payment_id=...` with the payment ID as a query parameter
 2. Calls `checkPayment` to verify the payment
-3. Returns `{ status: 'paid', invoiceId }` or `{ status: 'unpaid', invoiceId }`
+3. Returns plain text `SUCCESS` after verification
 
 ### Custom Webhook Controller
 
 For more control, create your own webhook controller:
 
 ```typescript
-import { Controller, Post, Body, HttpCode } from '@nestjs/common';
+import { Controller, Get, Query, Header } from '@nestjs/common';
 import { QPayService } from '@qpay-sdk/nestjs';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
@@ -242,25 +242,23 @@ export class CustomWebhookController {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  @Post('webhook')
-  @HttpCode(200)
-  async handleWebhook(@Body() body: { invoice_id?: string }) {
-    const invoiceId = body.invoice_id;
-    if (!invoiceId) {
-      return { error: 'Missing invoice_id' };
+  @Get('webhook')
+  @Header('Content-Type', 'text/plain')
+  async handleWebhook(@Query('qpay_payment_id') paymentId: string) {
+    if (!paymentId) {
+      return 'ERROR';
     }
 
     const result = await this.qpay.checkPayment({
       objectType: 'INVOICE',
-      objectId: invoiceId,
+      objectId: paymentId,
     });
 
     if (result.rows?.length > 0) {
-      this.eventEmitter.emit('payment.received', { invoiceId, result });
-      return { status: 'paid', invoiceId };
+      this.eventEmitter.emit('payment.received', { paymentId, result });
     }
 
-    return { status: 'unpaid', invoiceId };
+    return 'SUCCESS';
   }
 }
 ```
@@ -385,9 +383,9 @@ describe('QPayWebhookController', () => {
     controller = module.get(QPayWebhookController);
   });
 
-  it('should return paid status', async () => {
-    const result = await controller.handleWebhook({ invoice_id: 'inv_123' });
-    expect(result).toEqual({ status: 'paid', invoiceId: 'inv_123' });
+  it('should return SUCCESS', async () => {
+    const result = await controller.handleWebhook('pay_123');
+    expect(result).toBe('SUCCESS');
   });
 });
 ```

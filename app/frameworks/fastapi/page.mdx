@@ -94,7 +94,7 @@ app.include_router(qpay_router, prefix="/qpay")
 ```
 
 This registers three endpoints:
-- `POST /qpay/webhook` -- Webhook callback handler
+- `GET /qpay/webhook` -- Webhook callback handler
 - `POST /qpay/invoice` -- Create a simple invoice
 - `GET /qpay/payment/{invoice_id}/status` -- Check payment status
 
@@ -222,52 +222,47 @@ await client.cancel_invoice(invoice_id)
 
 ### Using the Pre-built Router
 
-The `POST /qpay/webhook` endpoint is included in the pre-built router. It:
+The `GET /qpay/webhook` endpoint is included in the pre-built router. It:
 
-1. Accepts a JSON body with `invoice_id` (validated via `WebhookPayload` Pydantic model)
+1. Receives a `qpay_payment_id` query parameter from QPay
 2. Calls `check_payment` to verify the payment
-3. Returns a `WebhookResponse` with status (`paid`, `unpaid`, or `error`)
+3. Returns plain text `SUCCESS` to acknowledge receipt
 
 ### Standalone Webhook Handler
 
 You can also use the `webhook_handler` function directly:
 
 ```python
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Query
+from fastapi.responses import PlainTextResponse
 from qpay import AsyncQPayClient
 from fastapi_qpay import webhook_handler, get_qpay_client
-from fastapi_qpay.webhook import WebhookPayload
 
 app = FastAPI()
 
-@app.post("/custom-webhook")
+@app.get("/custom-webhook")
 async def my_webhook(
-    payload: WebhookPayload,
+    qpay_payment_id: str = Query(...),
     client: AsyncQPayClient = Depends(get_qpay_client),
 ):
-    result = await webhook_handler(payload, client)
+    result = await webhook_handler(qpay_payment_id, client)
 
-    if result.status == "paid":
+    if result == "SUCCESS":
         # Update order status
-        await update_order(payload.invoice_id, status="paid")
+        await update_order(qpay_payment_id, status="paid")
 
-    return result
+    return PlainTextResponse("SUCCESS")
 ```
 
-### Webhook Models
+### Webhook Flow
 
-```python
-from fastapi_qpay.webhook import WebhookPayload, WebhookResponse
+QPay calls your webhook endpoint as a GET request with a query parameter:
 
-# Request body
-class WebhookPayload(BaseModel):
-    invoice_id: str
-
-# Response body
-class WebhookResponse(BaseModel):
-    status: str       # "paid", "unpaid", or "error"
-    message: str = "" # Error message or confirmation
 ```
+GET https://yoursite.com/qpay/webhook?qpay_payment_id=abc123
+```
+
+Your handler must verify the payment server-side using `check_payment` and return plain text `SUCCESS`.
 
 ---
 
@@ -364,13 +359,13 @@ async def test_webhook_paid():
             transport=ASGITransport(app=app),
             base_url="http://test"
         ) as ac:
-            response = await ac.post(
+            response = await ac.get(
                 "/qpay/webhook",
-                json={"invoice_id": "inv_123"},
+                params={"qpay_payment_id": "pay_123"},
             )
 
     assert response.status_code == 200
-    assert response.json()["status"] == "paid"
+    assert response.text == "SUCCESS"
 ```
 
 ### Testing with Dependency Overrides
@@ -394,8 +389,8 @@ app.dependency_overrides[get_qpay_client] = mock_get_client
 client = TestClient(app)
 
 def test_webhook_unpaid():
-    response = client.post("/qpay/webhook", json={"invoice_id": "inv_456"})
-    assert response.json()["status"] == "unpaid"
+    response = client.get("/qpay/webhook", params={"qpay_payment_id": "pay_456"})
+    assert response.text == "SUCCESS"
 ```
 
 ---
@@ -417,16 +412,16 @@ def test_webhook_unpaid():
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/webhook` | Webhook callback handler |
+| GET | `/webhook` | Webhook callback handler |
 | POST | `/invoice` | Create a simple invoice (query params: `sender_invoice_no`, `amount`) |
 | GET | `/payment/{invoice_id}/status` | Check payment status |
 
-### Webhook Models
+### Webhook
 
-| Model | Fields | Description |
-|-------|--------|-------------|
-| `WebhookPayload` | `invoice_id: str` | Webhook request body |
-| `WebhookResponse` | `status: str, message: str` | Webhook response body |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `qpay_payment_id` | query string | Payment ID from QPay callback |
+| Response | plain text | Returns `SUCCESS` to acknowledge |
 
 ### Dependencies
 

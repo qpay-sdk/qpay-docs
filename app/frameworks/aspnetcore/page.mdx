@@ -245,17 +245,17 @@ app.MapControllers();
 app.Run();
 ```
 
-The middleware intercepts `POST` requests to the configured `WebhookPath` (default: `/api/qpay/webhook`).
+The middleware intercepts `GET` requests to the configured `WebhookPath` (default: `/api/qpay/webhook`).
 
 ### Webhook Flow
 
 When QPay sends a callback:
 
-1. The middleware intercepts the request at the webhook path
-2. Extracts `invoice_id` from the JSON body
+1. The middleware intercepts the GET request at the webhook path
+2. Extracts `qpay_payment_id` from the query parameters (`context.Request.Query["qpay_payment_id"]`)
 3. Calls `CheckPaymentAsync` to verify the payment
 4. If an `IQPayEventHandler` is registered, calls `HandlePaymentAsync` with the event
-5. Returns a JSON response (`{ status: "paid" }` or `{ status: "unpaid" }`)
+5. Returns plain text `"SUCCESS"` response
 
 ### Custom Webhook Path
 
@@ -354,7 +354,6 @@ public async Task CreatePayment_ReturnsInvoice()
 
 ```csharp
 using Microsoft.AspNetCore.Mvc.Testing;
-using System.Net.Http.Json;
 
 public class WebhookTests : IClassFixture<WebApplicationFactory<Program>>
 {
@@ -366,16 +365,13 @@ public class WebhookTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
-    public async Task Webhook_ReturnsPaid()
+    public async Task Webhook_ReturnsSuccess()
     {
-        var response = await _client.PostAsJsonAsync("/api/qpay/webhook", new
-        {
-            invoice_id = "inv_123"
-        });
+        var response = await _client.GetAsync("/api/qpay/webhook?qpay_payment_id=pay_123");
 
         response.EnsureSuccessStatusCode();
-        var body = await response.Content.ReadFromJsonAsync<dynamic>();
-        Assert.Equal("paid", body.status);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Equal("SUCCESS", body);
     }
 }
 ```

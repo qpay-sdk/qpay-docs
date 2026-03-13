@@ -75,7 +75,7 @@ https://merchant-sandbox.qpay.mn
 4. **Payment**: Customer scans the QR code or taps a bank app link to pay
 5. **Confirmation**: Payment is confirmed via two parallel mechanisms:
    - **Client-side polling**: JavaScript polls every 3 seconds via AJAX (`wp_ajax_qpay_check_payment`). On success, the customer is automatically redirected to the order confirmation page
-   - **Server-side webhook**: QPay sends a POST request to the callback URL. The webhook handler verifies the payment and calls `$order->payment_complete()`
+   - **Server-side webhook**: QPay sends a GET request to the callback URL with `qpay_payment_id` as a query parameter. The webhook handler verifies the payment and calls `$order->payment_complete()`
 
 ### Invoice Data Mapping
 
@@ -102,7 +102,7 @@ https://yoursite.com/?wc-api=qpay_webhook
 
 The webhook handler (`WC_QPay_Webhook` class) does the following:
 
-1. Reads the `invoice_id` from the POST body (JSON)
+1. Reads the `qpay_payment_id` from the query parameter
 2. Looks up the WooCommerce order by the stored `_qpay_invoice_id` meta value
 3. Calls `POST /v2/payment/check` to verify the payment with QPay
 4. If payment is confirmed, calls `$order->payment_complete()` and adds an order note
@@ -163,7 +163,7 @@ The API client caches the access token using WordPress transients (`qpay_access_
 
 - Confirm the callback URL is publicly accessible (not behind a firewall or basic auth)
 - Check that the URL `https://yoursite.com/?wc-api=qpay_webhook` returns a response
-- Verify there are no security plugins blocking POST requests to the webhook endpoint
+- Verify there are no security plugins blocking GET requests to the webhook endpoint
 - Review your server error logs for PHP exceptions
 
 ### "QPay payment error. Please try again."

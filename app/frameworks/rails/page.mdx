@@ -89,7 +89,7 @@ Rails.application.routes.draw do
 end
 ```
 
-This registers `POST /qpay/webhooks` as the webhook endpoint.
+This registers `GET /qpay/webhooks` as the webhook endpoint.
 
 ### Create an Invoice
 
@@ -181,23 +181,23 @@ end
 
 ## Webhook Handling
 
-The engine registers a webhook controller at `POST /qpay/webhooks` (via the engine mount).
+The engine registers a webhook controller at `GET /qpay/webhooks` (via the engine mount).
 
 ### Webhook Flow
 
 When QPay sends a callback:
 
-1. The `WebhooksController` extracts `invoice_id` from the request parameters
+1. The `WebhooksController` extracts `qpay_payment_id` from the request query parameters
 2. Calls `check_payment` to verify the payment
 3. Instruments an `ActiveSupport::Notifications` event (`payment_received.qpay`) if payment rows are found
-4. Returns a JSON response with the status
+4. Returns a plain text `SUCCESS` response
 
 ### Engine Routes
 
 ```ruby
 # config/routes.rb (inside the engine)
 QPay::Rails::Engine.routes.draw do
-  post "webhooks", to: "webhooks#create"
+  get "webhooks", to: "webhooks#show"
 end
 ```
 
@@ -213,11 +213,11 @@ Subscribe to payment notifications using ActiveSupport:
 
 ```ruby
 ActiveSupport::Notifications.subscribe("payment_received.qpay") do |name, start, finish, id, payload|
-  invoice_id = payload[:invoice_id]
+  qpay_payment_id = payload[:qpay_payment_id]
   result = payload[:result]
 
   # Update order status
-  order = Order.find_by(qpay_invoice_id: invoice_id)
+  order = Order.find_by(qpay_payment_id: qpay_payment_id)
   order&.update(status: :paid)
 end
 ```
@@ -229,10 +229,10 @@ class PaymentSubscriber < ActiveSupport::Subscriber
   attach_to :qpay
 
   def payment_received(event)
-    invoice_id = event.payload[:invoice_id]
+    qpay_payment_id = event.payload[:qpay_payment_id]
     result = event.payload[:result]
 
-    Order.find_by(qpay_invoice_id: invoice_id)&.update(status: :paid)
+    Order.find_by(qpay_payment_id: qpay_payment_id)&.update(status: :paid)
   end
 end
 ```
@@ -243,7 +243,7 @@ end
 # config/initializers/qpay_events.rb
 ActiveSupport::Notifications.subscribe("payment_received.qpay") do |*args|
   event = ActiveSupport::Notifications::Event.new(*args)
-  Rails.logger.info "QPay payment received: #{event.payload[:invoice_id]}"
+  Rails.logger.info "QPay payment received: #{event.payload[:qpay_payment_id]}"
 end
 ```
 
@@ -329,10 +329,10 @@ RSpec.describe "QPay Webhook" do
     allow(QPay::Rails).to receive(:client).and_return(mock_client)
     allow(mock_client).to receive(:check_payment).and_return(mock_result)
 
-    post "/qpay/webhooks", params: { invoice_id: "inv_123" }
+    get "/qpay/webhooks", params: { qpay_payment_id: "pay_123" }
 
     expect(events.length).to eq(1)
-    expect(events.first.payload[:invoice_id]).to eq("inv_123")
+    expect(events.first.payload[:qpay_payment_id]).to eq("pay_123")
   end
 end
 ```
@@ -380,7 +380,7 @@ end
 
 | Event Name | Payload Keys | Description |
 |------------|-------------|-------------|
-| `payment_received.qpay` | `:invoice_id`, `:result` | Fired when payment is confirmed |
+| `payment_received.qpay` | `:qpay_payment_id`, `:result` | Fired when payment is confirmed |
 
 ### Generator
 

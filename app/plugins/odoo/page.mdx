@@ -82,7 +82,7 @@ https://merchant-sandbox.qpay.mn
    - Bank app deep links for supported Mongolian banks
    - A "Waiting for payment..." spinner
 5. **Client-side Polling**: JavaScript polls `/payment/qpay/check` every 3 seconds for up to 5 minutes. On success, the page reloads automatically
-6. **Webhook Confirmation**: QPay sends a POST to `/payment/qpay/webhook`. The controller finds the matching transaction and calls `_handle_notification_data()`, which triggers `_process_notification_data()` to verify the payment and set the transaction to `done`
+6. **Webhook Confirmation**: QPay sends a GET request to `/payment/qpay/webhook` with `qpay_payment_id` as a query parameter. The controller finds the matching transaction and calls `_handle_notification_data()`, which triggers `_process_notification_data()` to verify the payment and set the transaction to `done`
 
 ### Currency Filtering
 
@@ -117,15 +117,16 @@ The module automatically registers two HTTP endpoints via the `QPayController`:
 ### Payment Webhook
 
 ```
-POST /payment/qpay/webhook
+GET /payment/qpay/webhook
 ```
 
-- Type: JSON (`type='json'`)
+- Type: HTTP (`type='http'`)
+- Methods: `['GET']`
 - Auth: Public (`auth='public'`)
 - CSRF: Disabled (`csrf=False`)
 
 This endpoint:
-1. Receives the QPay callback data (JSON)
+1. Receives `qpay_payment_id` as a query parameter
 2. Finds the matching `payment.transaction` by `sender_invoice_no`
 3. Calls `_handle_notification_data()` which triggers `_process_notification_data()`
 4. The notification handler verifies the payment via `POST /v2/payment/check`

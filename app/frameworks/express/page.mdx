@@ -88,12 +88,12 @@ import { createQPayRouter } from '@qpay-sdk/express';
 const app = express();
 
 app.use('/qpay', createQPayRouter(undefined, {
-  onPaymentReceived: (invoiceId, result) => {
-    console.log('Payment confirmed:', invoiceId);
+  onPaymentReceived: (paymentId, result) => {
+    console.log('Payment confirmed:', paymentId);
     // Update order status, send confirmation email, etc.
   },
-  onPaymentFailed: (invoiceId, reason) => {
-    console.log('Payment failed:', invoiceId, reason);
+  onPaymentFailed: (paymentId, reason) => {
+    console.log('Payment failed:', paymentId, reason);
   },
 }));
 
@@ -103,7 +103,7 @@ app.listen(3000);
 This registers three endpoints:
 - `POST /qpay/invoice` -- Create a simple invoice
 - `POST /qpay/check` -- Check payment status
-- `POST /qpay/webhook` -- Webhook callback handler
+- `GET /qpay/webhook` -- Webhook callback handler
 
 ---
 
@@ -174,20 +174,20 @@ await req.qpay.cancelInvoice(invoiceId);
 
 ### Using the Pre-built Router
 
-The `createQPayRouter` function includes a webhook endpoint at `POST /webhook`:
+The `createQPayRouter` function includes a webhook endpoint at `GET /webhook`:
 
 ```typescript
 app.use('/qpay', createQPayRouter(undefined, {
-  onPaymentReceived: async (invoiceId, result) => {
+  onPaymentReceived: async (paymentId, result) => {
     // Called when payment is confirmed
     await Order.findOneAndUpdate(
-      { qpayInvoiceId: invoiceId },
+      { qpayPaymentId: paymentId },
       { status: 'paid' },
     );
   },
-  onPaymentFailed: async (invoiceId, reason) => {
+  onPaymentFailed: async (paymentId, reason) => {
     // Called when payment verification fails
-    console.error(`Payment failed for ${invoiceId}: ${reason}`);
+    console.error(`Payment failed for ${paymentId}: ${reason}`);
   },
 }));
 ```
@@ -201,26 +201,26 @@ import { qpayMiddleware, qpayWebhook } from '@qpay-sdk/express';
 
 app.use(qpayMiddleware());
 
-app.post('/qpay/webhook', qpayWebhook({
-  onPaymentReceived: async (invoiceId, result) => {
-    console.log('Paid:', invoiceId);
+app.get('/qpay/webhook', qpayWebhook({
+  onPaymentReceived: async (paymentId, result) => {
+    console.log('Paid:', paymentId);
   },
-  onPaymentFailed: async (invoiceId, reason) => {
-    console.log('Failed:', invoiceId, reason);
+  onPaymentFailed: async (paymentId, reason) => {
+    console.log('Failed:', paymentId, reason);
   },
 }));
 ```
 
 ### Webhook Flow
 
-When QPay sends a POST to your webhook:
+When QPay sends a GET request to your webhook:
 
-1. The handler extracts `invoice_id` from the request body
+1. The handler extracts `qpay_payment_id` from the query parameters
 2. Calls `checkPayment` to verify the payment via the QPay API
-3. If payment rows are found, calls `onPaymentReceived(invoiceId, result)`
-4. If no rows are found, calls `onPaymentFailed(invoiceId, 'No payment found')`
-5. If an error occurs, calls `onPaymentFailed(invoiceId, errorMessage)`
-6. Returns a JSON response (`{ status: 'paid' }` or `{ status: 'unpaid' }`)
+3. If payment rows are found, calls `onPaymentReceived(paymentId, result)`
+4. If no rows are found, calls `onPaymentFailed(paymentId, 'No payment found')`
+5. If an error occurs, calls `onPaymentFailed(paymentId, errorMessage)`
+6. Returns plain text `SUCCESS`
 
 ---
 
@@ -230,8 +230,8 @@ The Express package uses callback-based event handling via `QPayWebhookOptions`:
 
 ```typescript
 interface QPayWebhookOptions {
-  onPaymentReceived?: (invoiceId: string, result: any) => void | Promise<void>;
-  onPaymentFailed?: (invoiceId: string, reason: string) => void | Promise<void>;
+  onPaymentReceived?: (paymentId: string, result: any) => void | Promise<void>;
+  onPaymentFailed?: (paymentId: string, reason: string) => void | Promise<void>;
 }
 ```
 
@@ -281,18 +281,18 @@ jest.mock('qpay-js', () => ({
 import request from 'supertest';
 
 describe('Webhook', () => {
-  it('should return paid status', async () => {
+  it('should return SUCCESS', async () => {
     const onPaymentReceived = jest.fn();
 
     const app = express();
     app.use('/qpay', createQPayRouter(undefined, { onPaymentReceived }));
 
     const res = await request(app)
-      .post('/qpay/webhook')
-      .send({ invoice_id: 'inv_123' });
+      .get('/qpay/webhook')
+      .query({ qpay_payment_id: 'pay_123' });
 
-    expect(res.body.status).toBe('paid');
-    expect(onPaymentReceived).toHaveBeenCalledWith('inv_123', expect.any(Object));
+    expect(res.text).toBe('SUCCESS');
+    expect(onPaymentReceived).toHaveBeenCalledWith('pay_123', expect.any(Object));
   });
 });
 ```
@@ -323,8 +323,8 @@ interface QPayRequest extends Request {
 
 ```typescript
 interface QPayWebhookOptions {
-  onPaymentReceived?: (invoiceId: string, result: any) => void | Promise<void>;
-  onPaymentFailed?: (invoiceId: string, reason: string) => void | Promise<void>;
+  onPaymentReceived?: (paymentId: string, result: any) => void | Promise<void>;
+  onPaymentFailed?: (paymentId: string, reason: string) => void | Promise<void>;
 }
 ```
 
@@ -334,7 +334,7 @@ interface QPayWebhookOptions {
 |--------|------|-------------|
 | POST | `/invoice` | Create a simple invoice (body forwarded to `createSimpleInvoice`) |
 | POST | `/check` | Check payment status (body forwarded to `checkPayment`) |
-| POST | `/webhook` | Webhook callback handler |
+| GET | `/webhook` | Webhook callback handler (receives `qpay_payment_id` query param) |
 
 ### Re-exported Types from qpay-js
 

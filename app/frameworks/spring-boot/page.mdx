@@ -150,19 +150,19 @@ if (result.getRows() != null && !result.getRows().isEmpty()) {
 
 ## Webhook Handling
 
-The starter includes a built-in `QPayWebhookController` that handles `POST` requests at the configured webhook path (default: `/qpay/webhook`).
+The starter includes a built-in `QPayWebhookController` that handles `GET` requests at the configured webhook path (default: `/qpay/webhook`).
 
 When QPay sends a callback:
 
-1. The controller extracts `invoice_id` from the JSON body
+1. The controller extracts `qpay_payment_id` from the query parameter
 2. Calls `checkPayment` to verify the payment
 3. Publishes a `QPayWebhookEvent` via Spring's `ApplicationEventPublisher` if payment is confirmed
-4. Returns a JSON response with the status
+4. Returns plain text `SUCCESS`
 
 The webhook endpoint is automatically registered as:
 
 ```java
-@PostMapping("${qpay.webhook-path:/qpay/webhook}")
+@GetMapping("${qpay.webhook-path:/qpay/webhook}")
 ```
 
 ---
